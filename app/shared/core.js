@@ -49,12 +49,32 @@ function getWorker() {
 
 // Versionsnummer der App – wird auf dem Anmeldebildschirm und im Admin-Bereich angezeigt,
 // damit man nach einem Update sieht, dass die neue Version läuft. Bei jeder Veröffentlichung erhöhen.
-export const APP_VERSION = '1.0.0';
+export const APP_VERSION = '1.0.1';
 
 // Offline-Betrieb: Service Worker registrieren (liegt im Hauptordner der App)
 export function registerOffline() {
   if (!('serviceWorker' in navigator)) return;
-  navigator.serviceWorker.register(new URL('../sw.js', import.meta.url), { scope: new URL('../', import.meta.url).pathname }).catch(() => {});
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register(new URL('../sw.js', import.meta.url), { scope: new URL('../', import.meta.url).pathname })
+    .then((reg) => {
+      // Das Gerät läuft oft tagelang ohne Neustart: regelmäßig und beim Zurückholen der App nach Updates schauen
+      const check = () => { if (navigator.onLine !== false) reg.update().catch(() => {}); };
+      setInterval(check, 30 * 60 * 1000);
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
+    })
+    .catch(() => {});
+  // Neue Version wurde installiert → Hinweis mit „Jetzt neu laden“ (nicht bei der allerersten Installation)
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) showUpdateBanner(); });
+}
+
+function showUpdateBanner() {
+  if (document.querySelector('.upd-banner')) return;
+  const el = h(`<div class="upd-banner" role="status"><span>Neue Version installiert.</span>
+    <button class="btn sm primary">Jetzt neu laden</button><button class="btn sm" aria-label="Später">Später</button></div>`);
+  const [go, later] = el.querySelectorAll('button');
+  go.addEventListener('click', () => location.reload());
+  later.addEventListener('click', () => el.remove());
+  document.body.append(el);
 }
 
 export class Api {

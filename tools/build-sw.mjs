@@ -27,7 +27,9 @@ const CACHE = 'kasse-' + VERSION;
 const FILES = ${JSON.stringify(['./', ...files], null, 2)};
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));
+  // Immer frisch vom Server laden (cache: 'reload'), nicht aus dem Zwischenspeicher des Browsers –
+  // sonst kann eine neue Version mit alten Dateien installiert werden (GitHub Pages erlaubt 10 Min. Zwischenspeicher).
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES.map((f) => new Request(f, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys()

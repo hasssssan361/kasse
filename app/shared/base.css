@@ -193,3 +193,9 @@ table.data tr.storno td { background: color-mix(in srgb, var(--danger-soft) 60%,
 .pe-slot.none { opacity: .55; }
 .pe-slot .slot-sum { fill: #fde047; }
 .seat.ssel circle { stroke: var(--accent); stroke-width: 5; }
+
+/* Hinweis: neue Version installiert */
+.upd-banner { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 90;
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: center; max-width: calc(100% - 32px);
+  background: var(--surface); border: 1px solid var(--accent); border-radius: var(--radius); padding: 10px 14px; box-shadow: var(--shadow); font-weight: 700; }
+@media (max-width: 820px) { .upd-banner { bottom: calc(76px + env(safe-area-inset-bottom)); } }

@@ -1,6 +1,6 @@
 # Kasse – Anleitung
 
-**Version 1.0.0**
+**Version 1.0.1**
 
 Manipulationsgeschütztes Kassensystem als **App für ein Android-Tablet oder -Smartphone**.
 Alles läuft **im Gerät**: kein Server, kein Laptop, kein Fernzugang, im Betrieb **kein Internet nötig**, **kostenlos**.
@@ -119,21 +119,25 @@ informieren (Zweck, gespeicherte Daten, Löschung). Bei Betriebsrat ist dessen Z
 Updates kommen **automatisch über die App** – nichts neu installieren, nichts deinstallieren.
 **Alle Daten bleiben erhalten** (Verkäufe, Rechnungen, Stornos, Tagesabschlüsse, Protokoll, Mitarbeiter, Artikel, Tische).
 
+Ab Version 1.0.1 geht es von selbst: Ist das Gerät mit dem Internet verbunden, sucht die App beim Öffnen,
+beim Zurückholen in den Vordergrund und alle 30 Minuten nach Updates. Ist eins installiert, erscheint unten
+**„Neue Version installiert – Jetzt neu laden“**. Antippen, fertig. Mit „Später“ geht es erst beim nächsten Start weiter.
+
+Von Hand (z. B. wenn der Hinweis nicht kommt):
 1. Gerät **mit dem Internet verbinden** (WLAN).
-2. Die Kasse über das Symbol **„Kasse“** öffnen und ca. **10 Sekunden** warten – das Update wird jetzt im
-   Hintergrund geladen. Die Kasse läuft dabei normal weiter.
+2. Die Kasse über das Symbol **„Kasse“** öffnen und ca. **10 Sekunden** warten.
 3. Die App **ganz schließen**: Übersicht der geöffneten Apps öffnen (□-Taste oder vom unteren Rand nach oben
    wischen) und die Kasse wegwischen.
 4. Die Kasse **erneut öffnen**.
-5. **Prüfen:** Unten auf dem Anmeldebildschirm steht die Versionsnummer (z. B. **„Version 1.0.0“**),
-   im Admin-Bereich links unten „App-Version …“. Nach einem Update steht dort die neue Nummer.
+5. **Prüfen:** Unten auf dem Anmeldebildschirm steht die Versionsnummer (z. B. **„Version 1.0.1“**),
+   im Admin-Bereich links unten „App-Version …“.
 
 Steht dort noch die alte Version: Schritte 2–4 wiederholen.
 
 **Tipp:** Updates am besten außerhalb der Öffnungszeiten einspielen und vorher offene Tische abrechnen.
 Nötig ist das nicht – offene Tische bleiben auch beim Update erhalten.
 
-## Funktionen im Überblick (Version 1.0.0)
+## Funktionen im Überblick (Version 1.0.1)
 
 ### Auslieferung, Freischaltung und Ersteinrichtung
 - Die Kasse wird **leer** ausgeliefert (keine Artikel, Tische oder Mitarbeiter).
