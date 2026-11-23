@@ -48,6 +48,10 @@ CREATE TABLE IF NOT EXISTS articles(
   id INTEGER PRIMARY KEY, plu INTEGER UNIQUE, name TEXT NOT NULL, category_id INTEGER NOT NULL REFERENCES categories(id),
   price INTEGER NOT NULL CHECK(price>=0), vat INTEGER NOT NULL DEFAULT 19, track_stock INTEGER NOT NULL DEFAULT 0,
   active INTEGER NOT NULL DEFAULT 1, sort INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS article_variants(
+  id INTEGER PRIMARY KEY, article_id INTEGER NOT NULL REFERENCES articles(id), name TEXT NOT NULL,
+  price INTEGER NOT NULL CHECK(price>=0), sort INTEGER NOT NULL DEFAULT 0, active INTEGER NOT NULL DEFAULT 1);
+CREATE INDEX IF NOT EXISTS av_article ON article_variants(article_id);
 CREATE TABLE IF NOT EXISTS dining_tables(
   id INTEGER PRIMARY KEY, number INTEGER UNIQUE NOT NULL, name TEXT, area TEXT NOT NULL DEFAULT 'Gastraum',
   seats INTEGER NOT NULL DEFAULT 4, active INTEGER NOT NULL DEFAULT 1);
@@ -156,7 +160,9 @@ const APPEND_ONLY = [
   'day_closings', 'stock_movements', 'admin_actions', 'anchors', 'db_journal',
 ];
 // Tabellen, deren Zeilenänderungen das Journal automatisch mitschreibt
-const JOURNALED = ['orders', 'order_items', 'articles', 'categories', 'dining_tables', 'users', 'roles', 'settings', 'shifts', 'alerts'];
+const JOURNALED = ['orders', 'order_items', 'articles', 'article_variants', 'categories', 'dining_tables', 'users', 'roles', 'settings', 'shifts', 'alerts'];
+// Stammdaten: nie löschen, nur deaktivieren (shifts/alerts nur über die kontrollierte Löschung alter Abschlüsse)
+const MASTER = ['users', 'articles', 'article_variants', 'categories', 'dining_tables', 'shifts', 'alerts', 'roles', 'settings'];
 
 const NOPURGE = "(SELECT purge FROM ctx WHERE id=1)=0";
 const LASTPURGE = (col) => `(SELECT ${col} FROM purges ORDER BY id DESC LIMIT 1)`;
@@ -200,7 +206,8 @@ function protectionTriggers(db) {
          OR NEW.origin_item_id IS NOT OLD.origin_item_id OR NEW.origin_kind IS NOT OLD.origin_kind
          OR NEW.article_id IS NOT OLD.article_id OR NEW.article_name IS NOT OLD.article_name
          OR NEW.created_by IS NOT OLD.created_by OR NEW.created_at IS NOT OLD.created_at
-         OR NEW.list_price IS NOT OLD.list_price OR NEW.vat IS NOT OLD.vat OR NEW.raw_input IS NOT OLD.raw_input;
+         OR NEW.list_price IS NOT OLD.list_price OR NEW.vat IS NOT OLD.vat OR NEW.raw_input IS NOT OLD.raw_input
+         OR NEW.variant_id IS NOT OLD.variant_id;
     SELECT RAISE(ABORT,'MANIPULATIONSSCHUTZ: Mengen dürfen nicht verringert werden – bitte stornieren')
       WHERE NEW.qty < OLD.qty OR NEW.cancelled_qty < OLD.cancelled_qty OR NEW.moved_qty < OLD.moved_qty
          OR NEW.billed_qty < OLD.billed_qty;
@@ -213,7 +220,7 @@ function protectionTriggers(db) {
     SELECT RAISE(ABORT,'MANIPULATIONSSCHUTZ: Eröffnungsdaten sind unveränderbar')
       WHERE NEW.opened_by IS NOT OLD.opened_by OR NEW.opened_at IS NOT OLD.opened_at OR NEW.id IS NOT OLD.id;
   END;`);
-  for (const t of ['users', 'articles', 'categories', 'dining_tables', 'shifts', 'alerts', 'roles', 'settings']) {
+  for (const t of MASTER) {
     const when = ['shifts', 'alerts'].includes(t) ? ` WHEN ${NOPURGE}` : '';
     sql.push(`CREATE TRIGGER IF NOT EXISTS ${t}_no_delete BEFORE DELETE ON ${t}${when}
       BEGIN SELECT RAISE(ABORT,'MANIPULATIONSSCHUTZ: Löschen nicht erlaubt – bitte deaktivieren'); END;`);
@@ -244,7 +251,27 @@ function protectionTriggers(db) {
   db.exec(sql.join('\n'));
 }
 
-export const EXPECTED_TRIGGER_COUNT = () => APPEND_ONLY.length * 2 + 2 + 4 + 8 + 2 + JOURNALED.length * 3;
+export const EXPECTED_TRIGGER_COUNT = () => APPEND_ONLY.length * 2 + 2 + 4 + MASTER.length + 2 + JOURNALED.length * 3;
+
+// ---- Erweiterung bestehender Datenbanken (Updates auf Geräten mit vorhandenen Daten) ----
+// Spalten werden nur ergänzt, nie entfernt. Ändern sich Schutzregeln oder Spalten, werden die Trigger
+// einmalig neu angelegt (die Journal-Trigger müssen alle Spalten kennen).
+export const SCHEMA_VERSION = 2;
+const ADD_COLUMNS = [
+  ['cancellations', 'kind', "TEXT NOT NULL DEFAULT 'storno'"], // 'storno' oder 'ec' (mit EC bezahlt)
+  ['order_items', 'variant_id', 'INTEGER'],
+  ['stock_movements', 'variant_id', 'INTEGER'],
+];
+function migrate(d) {
+  for (const [t, c, def] of ADD_COLUMNS) {
+    if (!d.prepare(`PRAGMA table_info(${t})`).all().some((x) => x.name === c)) d.exec(`ALTER TABLE ${t} ADD COLUMN ${c} ${def}`);
+  }
+  const v = Number(d.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value || 1);
+  if (v < SCHEMA_VERSION) {
+    for (const r of d.prepare("SELECT name FROM sqlite_master WHERE type='trigger'").all()) d.exec(`DROP TRIGGER IF EXISTS ${r.name}`);
+    d.prepare("INSERT INTO meta(key,value) VALUES('schema_version',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(String(SCHEMA_VERSION));
+  }
+}
 
 export let db = null;
 
@@ -257,6 +284,7 @@ export function openDb(driver) {
   db.function('chain_hash', (...a) => chainHash(...a));
   db.exec('PRAGMA foreign_keys=ON;');
   db.exec(SCHEMA);
+  migrate(db);
   protectionTriggers(db);
   // Falls die App zuvor abgebrochen wurde, Kontext zurücksetzen
   db.prepare('UPDATE ctx SET tx_id=NULL, purge=0 WHERE id=1').run();

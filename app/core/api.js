@@ -16,6 +16,7 @@ const file = (data, contentType, filename) => ({ __file: true, data, contentType
 
 const TYPE_LABEL = {
   LOGIN: 'Anmeldung', LOGIN_FAILED: 'Anmeldung fehlgeschlagen', LOGOUT: 'Abmeldung', SESSION_EXPIRED: 'Sitzung beendet',
+  EC_STORNO: 'EC-Zahlung (storniert)', EC_PAYMENT: 'Mit EC bezahlt',
   TABLE_OPENED: 'Tisch eröffnet', TABLE_TAKEOVER: 'Tisch übernommen', ITEM_ADDED: 'Artikel eingegeben', ITEM_QTY_INCREASED: 'Menge erhöht',
   ITEM_CANCELLED: 'STORNO', ITEM_PRICE_CHANGED: 'Preis geändert', ITEM_MOVED: 'Artikel verschoben', TABLE_CHANGED: 'Tischwechsel',
   INVOICE_CREATED: 'Rechnung erstellt', TABLE_CLOSED: 'Tisch abgeschlossen', INVOICE_REVERSED: 'Rechnung storniert',
@@ -48,7 +49,7 @@ function publicSettings() {
   const s = auth.getSettings();
   return {
     business_name: s.business_name, business_address: s.business_address, auto_logout_minutes: s.auto_logout_minutes,
-    payment_methods: s.payment_methods, move_requires_reason: s.move_requires_reason,
+    payment_methods: s.payment_methods, ec_method_name: s.ec_method_name, move_requires_reason: s.move_requires_reason,
     storno_approval_always: s.storno_approval_always, storno_approval_min_value: s.storno_approval_min_value,
     storno_approval_after_minutes: s.storno_approval_after_minutes, reopen_requires_approval: s.reopen_requires_approval,
     price_change_requires_approval: s.price_change_requires_approval, discount_requires_approval: s.discount_requires_approval,
@@ -59,6 +60,7 @@ function publicSettings() {
 r('GET', '/api/pos/bootstrap', 'pos', () => ({
   categories: all('SELECT * FROM categories WHERE active=1 ORDER BY sort, name'),
   articles: all('SELECT * FROM articles WHERE active=1 ORDER BY sort, name'),
+  variants: all('SELECT * FROM article_variants WHERE active=1 ORDER BY sort, id'),
   tables: pos.tablesOverview(),
   users: all('SELECT id, name, personal_nr FROM users WHERE active=1 ORDER BY name'),
   settings: publicSettings(),
@@ -79,6 +81,7 @@ r('POST', '/api/pos/move', 'pos', (a, _p, _q, b) => pos.moveItems(a, b));
 r('POST', '/api/pos/orders/:id/move-table', 'pos', (a, p, _q, b) => pos.moveTable(a, p.id, b));
 r('POST', '/api/pos/orders/:id/takeover', 'pos', (a, p, _q, b) => pos.takeover(a, p.id, b));
 r('POST', '/api/pos/orders/:id/pay', 'pos', (a, p, _q, b) => pos.pay(a, p.id, b));
+r('POST', '/api/pos/orders/:id/ec-pay', 'pos', (a, p, _q, b) => pos.ecPay(a, p.id, b));
 r('POST', '/api/pos/orders/:id/close-empty', 'pos', (a, p) => pos.closeEmpty(a, p.id));
 r('POST', '/api/pos/ui-event', 'pos', (a, _p, _q, b) => pos.uiEvent(a, b));
 r('GET', '/api/pos/invoices', 'pos', (a, _p, q) => {
@@ -103,6 +106,7 @@ r('GET', '/api/admin/meta', 'dashboard', () => ({
   tables: all('SELECT * FROM dining_tables ORDER BY number'),
   categories: all('SELECT * FROM categories ORDER BY sort, name'),
   articles: all('SELECT * FROM articles ORDER BY sort, name'),
+  variants: all('SELECT * FROM article_variants ORDER BY sort, id'),
   type_labels: TYPE_LABEL, settings: auth.getSettings(), permissions: auth.PERMISSIONS, roles: adm.listRoles(),
 }));
 r('GET', '/api/admin/audit', 'dashboard', (_a, _p, q) => rep.auditQuery(q));
@@ -177,7 +181,7 @@ function exportDef(what, q) {
     }
     case 'cancellations': {
       const rows = rep.cancellationList(q);
-      return { title: 'Stornierungen', rows, cols: [
+      return { title: q.kind === 'ec' ? 'Mit EC bezahlt (stornierte Artikel)' : 'Stornierungen', rows, cols: [
         { label: 'Storno-Zeit', value: (r) => fmtBerlin(r.cancelled_at), width: 19 }, { label: 'Tisch', key: 'table_no', width: 5, right: true },
         { label: 'Artikel', key: 'article_name', width: 20 }, { label: 'Menge', key: 'qty', width: 5, right: true },
         { label: 'Einzel', value: (r) => eur(r.unit_price), width: 8, right: true }, { label: 'Gesamt', value: (r) => eur(r.total), width: 8, right: true },
@@ -225,6 +229,7 @@ function exportDef(what, q) {
         { label: 'Artikel', key: 'name', width: 26 }, { label: 'Kategorie', key: 'category', width: 14 },
         { label: 'Entnommen', key: 'entnommen', width: 10, right: true }, { label: 'Verkauft', key: 'verkauft', width: 9, right: true },
         { label: 'Noch offen', key: 'offen', width: 10, right: true }, { label: 'Storniert', key: 'storniert', width: 9, right: true },
+        { label: 'Per EC', key: 'per_ec', width: 7, right: true },
         { label: 'Differenz', key: 'differenz', width: 9, right: true },
       ] };
     }

@@ -40,9 +40,9 @@ function ensureOrder(actor, table, via) {
 
 function insertItem(f) {
   const id = (one('SELECT MAX(id) m FROM order_items')?.m || 0) + 1;
-  run(`INSERT INTO order_items(id,order_id,lifecycle_id,origin_item_id,origin_kind,article_id,article_name,category_kind,vat,list_price,unit_price,qty,created_by,created_at,raw_input)
-       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-  id, f.order_id, f.lifecycle_id ?? id, f.origin_item_id ?? null, f.origin_kind, f.article_id, f.article_name, f.category_kind ?? null,
+  run(`INSERT INTO order_items(id,order_id,lifecycle_id,origin_item_id,origin_kind,article_id,variant_id,article_name,category_kind,vat,list_price,unit_price,qty,created_by,created_at,raw_input)
+       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+  id, f.order_id, f.lifecycle_id ?? id, f.origin_item_id ?? null, f.origin_kind, f.article_id, f.variant_id ?? null, f.article_name, f.category_kind ?? null,
   f.vat, f.list_price, f.unit_price, f.qty, f.created_by, f.created_at, f.raw_input ?? null);
   return one('SELECT * FROM order_items WHERE id=?', id);
 }
@@ -89,18 +89,27 @@ export function addItem(actor, body) {
   const table = getTable(body.table_id);
   const a = one('SELECT a.*, c.kind AS category_kind FROM articles a JOIN categories c ON c.id=a.category_id WHERE a.id=?', int(body.article_id, 'Artikel'));
   if (!a || !a.active) fail(404, 'Artikel nicht verfügbar');
+  // Varianten (z. B. Shot / Longdrink / Flasche): Hat der Artikel aktive Varianten, muss eine gewählt werden
+  const variants = all('SELECT * FROM article_variants WHERE article_id=? AND active=1 ORDER BY sort, id', a.id);
+  let v = null;
+  if (variants.length) {
+    v = variants.find((x) => x.id === Number(body.variant_id));
+    if (!v) fail(400, `Bitte eine Variante wählen: ${variants.map((x) => x.name).join(', ')}`, { needs_variant: true });
+  }
+  const name = v ? `${a.name} (${v.name})` : a.name;
+  const price = v ? v.price : a.price;
   const qty = int(body.qty ?? 1, 'Menge', { min: 1, max: 99 });
   const raw = body.raw_input ? String(body.raw_input).slice(0, 40) : null;
   return tx(() => {
     const order = ensureOrder(actor, table, 'Artikeleingabe');
     const it = insertItem({
-      order_id: order.id, origin_kind: 'entry', article_id: a.id, article_name: a.name, category_kind: a.category_kind,
-      vat: a.vat, list_price: a.price, unit_price: a.price, qty, created_by: actor.user.id, created_at: nowIso(), raw_input: raw,
+      order_id: order.id, origin_kind: 'entry', article_id: a.id, variant_id: v?.id ?? null, article_name: name, category_kind: a.category_kind,
+      vat: a.vat, list_price: price, unit_price: price, qty, created_by: actor.user.id, created_at: nowIso(), raw_input: raw,
     });
     logEvent(actor, {
       type: 'ITEM_ADDED', table_no: table.number, order_id: order.id, item_id: it.id, lifecycle_id: it.lifecycle_id,
-      article_name: a.name, qty, unit_price: a.price, amount: qty * a.price, before: null, after: snap(it),
-      details: { article_id: a.id, plu: a.plu, eingabe: raw },
+      article_name: name, qty, unit_price: price, amount: qty * price, before: null, after: snap(it),
+      details: { article_id: a.id, variante: v?.name ?? null, plu: a.plu, eingabe: raw },
     });
     return { order_id: order.id, item: it };
   });
@@ -207,7 +216,7 @@ function moveLines(actor, order, target, lines, reason, kind) {
     const now = nowIso();
     const n = insertItem({
       order_id: targetOrder.id, lifecycle_id: cur.lifecycle_id, origin_item_id: cur.id, origin_kind: 'move',
-      article_id: cur.article_id, article_name: cur.article_name, category_kind: cur.category_kind, vat: cur.vat,
+      article_id: cur.article_id, variant_id: cur.variant_id, article_name: cur.article_name, category_kind: cur.category_kind, vat: cur.vat,
       list_price: cur.list_price, unit_price: cur.unit_price, qty, created_by: actor.user.id, created_at: now,
     });
     const ev = logEvent(actor, {
@@ -331,7 +340,7 @@ function insertInvoice(actor, ev, inv) {
 }
 
 const cancelledSnapshot = (orderId) => all(`SELECT c.item_id, c.lifecycle_id, c.article_name, c.qty, c.unit_price, c.total, c.reason,
-    c.entered_at, c.cancelled_at, ue.name AS eingegeben_von, uc.name AS storniert_von FROM cancellations c
+    c.entered_at, c.cancelled_at, c.kind, ue.name AS eingegeben_von, uc.name AS storniert_von FROM cancellations c
     JOIN users ue ON ue.id=c.entered_by JOIN users uc ON uc.id=c.cancelled_by WHERE c.order_id=? ORDER BY c.id`, orderId).map((r) => ({ ...r }));
 
 function createInvoice(actor, order, lines, opt) {
@@ -375,15 +384,15 @@ function closeOrderRow(actor, order, reason, invoiceNo) {
 }
 
 // Bestellung ohne offene Artikel schließen (nach Verschieben/Storno)
-function autoClose(actor, orderId, why) {
+function autoClose(actor, orderId, why, method = 'Keine Zahlung') {
   const o = one('SELECT o.*, t.number AS table_no FROM orders o JOIN dining_tables t ON t.id=o.table_id WHERE o.id=?', orderId);
-  if (o.status !== 'open') return;
+  if (o.status !== 'open') return false;
   const left = one('SELECT COALESCE(SUM(qty-cancelled_qty-moved_qty-billed_qty),0) n FROM order_items WHERE order_id=?', orderId).n;
-  if (left > 0) return;
+  if (left > 0) return false;
   const hasInv = one('SELECT COUNT(*) c FROM invoices WHERE order_id=?', orderId).c > 0;
   const hasStorno = one('SELECT COUNT(*) c FROM cancellations WHERE order_id=?', orderId).c > 0;
   if (!hasInv && hasStorno) {
-    const inv = createInvoice(actor, o, [], { method: 'Keine Zahlung', final: true, zero: true });
+    const inv = createInvoice(actor, o, [], { method, final: true, zero: true });
     closeOrderRow(actor, o, why + ' (Nullbeleg mit Stornos)', inv.invoice_no);
   } else if (!hasInv) {
     run("UPDATE orders SET status='merged', closed_by=?, closed_at=? WHERE id=?", actor.user.id, nowIso(), orderId);
@@ -391,6 +400,7 @@ function autoClose(actor, orderId, why) {
   } else {
     closeOrderRow(actor, o, why, null);
   }
+  return true;
 }
 
 export function closeEmpty(actor, orderId) {
@@ -410,6 +420,7 @@ export function pay(actor, orderId, body) {
   const pre = getOpenOrder(orderId);
   const method = String(body.method || '');
   if (!s.payment_methods.includes(method)) fail(400, 'Bitte eine Zahlungsart wählen');
+  if (method === s.ec_method_name) fail(400, 'EC-Zahlungen bitte über „Mit EC zahlen“ abschließen');
   const all_ = all('SELECT * FROM order_items WHERE order_id=?', pre.id);
   const pick = (items) => {
     let lines;
@@ -470,6 +481,56 @@ export function pay(actor, orderId, body) {
   });
 }
 
+// ---- Mit EC zahlen --------------------------------------------------------------
+// Wunsch des Betriebs: Bei EC-Zahlung werden die Artikel storniert (nicht als Umsatz gebucht).
+// Sie werden getrennt von normalen Stornos geführt (cancellations.kind='ec') und lösen keine
+// Storno-Warnungen aus; im Admin-Bereich bleiben sie mit dem Vermerk „Mit EC bezahlt“ sichtbar.
+export const EC_REASON = 'Mit EC bezahlt – daher storniert';
+export function ecPay(actor, orderId, body) {
+  requirePerm(actor, 'pos');
+  const s = getSettings();
+  return tx(() => {
+    const order = getOpenOrder(orderId);
+    const items = all('SELECT * FROM order_items WHERE order_id=?', order.id);
+    let lines;
+    if (Array.isArray(body.items) && body.items.length) {
+      lines = body.items.map((l) => {
+        const it = items.find((x) => x.id === Number(l.item_id));
+        if (!it) fail(400, 'Position gehört nicht zu diesem Tisch');
+        const q = int(l.qty ?? openQty(it), 'Menge', { min: 1, max: 999 });
+        if (q > openQty(it)) fail(409, `${it.article_name}: nur noch ${openQty(it)} offen`);
+        return { it, q };
+      });
+    } else lines = items.filter((i) => openQty(i) > 0).map((it) => ({ it, q: openQty(it) }));
+    if (!lines.length) fail(409, 'Keine offenen Artikel');
+    let total = 0;
+    const list = [];
+    for (const { it, q } of lines) {
+      const root = rootOf(it);
+      run('UPDATE order_items SET cancelled_qty=cancelled_qty+? WHERE id=?', q, it.id);
+      const after = one('SELECT * FROM order_items WHERE id=?', it.id);
+      const ev = logEvent(actor, {
+        type: 'EC_STORNO', category: 'ec', table_no: order.table_no, order_id: order.id, item_id: it.id, lifecycle_id: it.lifecycle_id,
+        article_name: it.article_name, qty: q, unit_price: it.unit_price, amount: q * it.unit_price, reason: EC_REASON,
+        before: snap(it), after: snap(after),
+        details: { ec_zahlung: true, eingegeben_von: userName(root.created_by), eingegeben_am: root.created_at },
+      });
+      const secs = Math.round((Date.parse(ev.ts) - Date.parse(root.created_at)) / 1000);
+      run(`INSERT INTO cancellations(item_id,lifecycle_id,order_id,table_no,article_name,qty,unit_price,total,entered_by,entered_at,cancelled_by,cancelled_at,reason,approval_required,approved_by,seconds_after_entry,audit_seq,kind)
+           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,0,NULL,?,?,'ec')`, it.id, it.lifecycle_id, order.id, order.table_no, it.article_name, q,
+      it.unit_price, q * it.unit_price, root.created_by, root.created_at, actor.user.id, ev.ts, EC_REASON, secs, ev.seq);
+      total += q * it.unit_price;
+      list.push(`${q}× ${it.article_name}`);
+    }
+    logEvent(actor, {
+      type: 'EC_PAYMENT', category: 'ec', table_no: order.table_no, order_id: order.id, amount: total, reason: EC_REASON,
+      after: { betrag: total, positionen: list }, details: { zahlungsart: s.ec_method_name },
+    });
+    const closed = autoClose(actor, order.id, 'Mit EC bezahlt', s.ec_method_name);
+    return { total, closed, positionen: list.length };
+  });
+}
+
 // ---- Wiedereröffnung -----------------------------------------------------------
 export function reopenInvoice(actor, invoiceId, body) {
   requirePerm(actor, 'pos');
@@ -512,7 +573,7 @@ export function reopenInvoice(actor, invoiceId, body) {
     for (const l of items) {
       const src = one('SELECT * FROM order_items WHERE id=?', l.item_id);
       const n = insertItem({
-        order_id: order.id, lifecycle_id: src.lifecycle_id, origin_item_id: src.id, origin_kind: 'reopen', article_id: src.article_id,
+        order_id: order.id, lifecycle_id: src.lifecycle_id, origin_item_id: src.id, origin_kind: 'reopen', article_id: src.article_id, variant_id: src.variant_id,
         article_name: src.article_name, category_kind: src.category_kind, vat: src.vat, list_price: src.list_price,
         unit_price: l.unit_price, qty: l.qty, created_by: actor.user.id, created_at: now,
       });
@@ -547,7 +608,8 @@ export function shiftReport(userId, from, to) {
   const by = {};
   let total = 0;
   for (const r of inv) { by[r.payment_method] = (by[r.payment_method] || 0) + r.total; total += r.total; }
-  const st = one('SELECT COUNT(*) n, COALESCE(SUM(total),0) v FROM cancellations WHERE cancelled_by=? AND cancelled_at>=? AND cancelled_at<?', userId, from, to);
+  const st = one("SELECT COUNT(*) n, COALESCE(SUM(total),0) v FROM cancellations WHERE kind='storno' AND cancelled_by=? AND cancelled_at>=? AND cancelled_at<?", userId, from, to);
+  const ec = one("SELECT COUNT(DISTINCT order_id) n, COALESCE(SUM(total),0) v FROM cancellations WHERE kind='ec' AND cancelled_by=? AND cancelled_at>=? AND cancelled_at<?", userId, from, to);
   const items = one("SELECT COALESCE(SUM(qty),0) n FROM audit_log WHERE user_id=? AND type IN ('ITEM_ADDED','ITEM_QTY_INCREASED') AND ts>=? AND ts<?", userId, from, to);
   const open = all(`SELECT t.number FROM orders o JOIN dining_tables t ON t.id=o.table_id WHERE o.status='open' AND o.waiter_id=?`, userId).map((r) => r.number);
   return {
@@ -555,7 +617,7 @@ export function shiftReport(userId, from, to) {
     rechnungen: inv.filter((r) => r.kind === 'rechnung').reduce((s, r) => s + r.n, 0),
     stornorechnungen: inv.filter((r) => r.kind === 'storno').reduce((s, r) => s + r.n, 0),
     rabatte: inv.reduce((s, r) => s + (r.kind === 'rechnung' ? r.discount : 0), 0),
-    stornos: st.n, storno_wert: st.v, artikel_eingegeben: items.n, offene_tische: open,
+    stornos: st.n, storno_wert: st.v, ec_tische: ec.n, ec_wert: ec.v, artikel_eingegeben: items.n, offene_tische: open,
   };
 }
 export function currentShift(actor, userId = actor.user.id) {

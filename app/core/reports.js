@@ -126,6 +126,9 @@ export function cancellationList(q) {
   let extra = '';
   if (q.user_id) { extra += ' AND (c.cancelled_by=? OR c.entered_by=?)'; const u = int(q.user_id, 'Mitarbeiter'); p.push(u, u); }
   if (q.table_no) { extra += ' AND c.table_no=?'; p.push(int(q.table_no, 'Tisch')); }
+  // Standard: echte Stornos. kind=ec liefert die wegen EC-Zahlung stornierten Artikel.
+  extra += ' AND c.kind=?';
+  p.push(q.kind === 'ec' ? 'ec' : 'storno');
   return all(`SELECT c.*, ue.name AS entered_by_name, uc.name AS cancelled_by_name, ua.name AS approved_by_name
      FROM cancellations c JOIN users ue ON ue.id=c.entered_by JOIN users uc ON uc.id=c.cancelled_by LEFT JOIN users ua ON ua.id=c.approved_by
      WHERE c.cancelled_at>=? AND c.cancelled_at<? ${extra} ORDER BY c.id DESC`, ...p);
@@ -159,17 +162,19 @@ export function employeeStats(q) {
     const tables = one(`SELECT COUNT(DISTINCT order_id) n FROM audit_log WHERE user_id=? AND ts>=? AND ts<? AND order_id IS NOT NULL
         AND category IN ('artikel','storno','verschiebung','abschluss','tisch','preis','wiedereroeffnung')`, u.id, a, b).n;
     const rev = one("SELECT COALESCE(SUM(total),0) v, SUM(kind='rechnung') n FROM invoices WHERE closed_by=? AND closed_at>=? AND closed_at<?", u.id, a, b);
-    const st = one('SELECT COUNT(*) n, COALESCE(SUM(qty),0) q, COALESCE(SUM(total),0) v FROM cancellations WHERE cancelled_by=? AND cancelled_at>=? AND cancelled_at<?', u.id, a, b);
-    const stOwn = one('SELECT COUNT(*) n, COALESCE(SUM(total),0) v FROM cancellations WHERE entered_by=? AND cancelled_at>=? AND cancelled_at<?', u.id, a, b);
+    const st = one("SELECT COUNT(*) n, COALESCE(SUM(qty),0) q, COALESCE(SUM(total),0) v FROM cancellations WHERE kind='storno' AND cancelled_by=? AND cancelled_at>=? AND cancelled_at<?", u.id, a, b);
+    const stOwn = one("SELECT COUNT(*) n, COALESCE(SUM(total),0) v FROM cancellations WHERE kind='storno' AND entered_by=? AND cancelled_at>=? AND cancelled_at<?", u.id, a, b);
+    const ec = one("SELECT COUNT(DISTINCT order_id) n, COALESCE(SUM(total),0) v FROM cancellations WHERE kind='ec' AND cancelled_by=? AND cancelled_at>=? AND cancelled_at<?", u.id, a, b);
     const mv = one("SELECT COUNT(*) n, COALESCE(SUM(qty),0) q FROM item_moves WHERE moved_by=? AND moved_at>=? AND moved_at<?", u.id, a, b);
     const reopen = ev(['TABLE_REOPENED']).n;
     const price = ev(['ITEM_PRICE_CHANGED']).n;
-    const quick = one('SELECT COUNT(*) n FROM cancellations WHERE cancelled_by=? AND cancelled_at>=? AND cancelled_at<? AND seconds_after_entry<=?', u.id, a, b, getSettings().alert_quick_storno_seconds).n;
+    const quick = one("SELECT COUNT(*) n FROM cancellations WHERE kind='storno' AND cancelled_by=? AND cancelled_at>=? AND cancelled_at<? AND seconds_after_entry<=?", u.id, a, b, getSettings().alert_quick_storno_seconds).n;
     const disc = one("SELECT COALESCE(SUM(discount),0) v FROM invoices WHERE closed_by=? AND kind='rechnung' AND closed_at>=? AND closed_at<?", u.id, a, b).v;
     const alerts = one('SELECT COUNT(*) n FROM alerts WHERE user_id=? AND ts>=? AND ts<?', u.id, a, b).n;
     return {
       ...u, tische: tables, artikel_eingegeben: entered.q, umsatz: rev.v, rechnungen: rev.n || 0,
       stornos: st.n, storno_menge: st.q, storno_wert: st.v, stornos_eigener_eingaben: stOwn.n, sofortstornos: quick,
+      ec_tische: ec.n, ec_wert: ec.v,
       verschiebungen: mv.n, verschobene_menge: mv.q, wiedereroeffnungen: reopen, preisaenderungen: price, rabatte: disc, warnungen: alerts,
       storno_quote: entered.q ? Math.round(st.q * 1000 / entered.q) / 10 : 0,
     };
@@ -199,26 +204,52 @@ export function revenue(q) {
       vat[v.satz].brutto += v.brutto; vat[v.satz].netto += v.netto; vat[v.satz].steuer += v.steuer;
     }
   }
-  const st = one('SELECT COUNT(*) n, COALESCE(SUM(total),0) v FROM cancellations WHERE cancelled_at>=? AND cancelled_at<?', a, b);
+  const st = one("SELECT COUNT(*) n, COALESCE(SUM(total),0) v FROM cancellations WHERE kind='storno' AND cancelled_at>=? AND cancelled_at<?", a, b);
+  const ec = one("SELECT COUNT(DISTINCT order_id) n, COALESCE(SUM(total),0) v FROM cancellations WHERE kind='ec' AND cancelled_at>=? AND cancelled_at<?", a, b);
   const total = byMethod.reduce((s, r) => s + r.total, 0);
-  return { from: a, to: b, total, byMethod, byKind, byArticle, byCategory, byHour, vat: Object.values(vat), stornos: st };
+  return { from: a, to: b, total, byMethod, byKind, byArticle, byCategory, byHour, vat: Object.values(vat), stornos: st, ec };
 }
 
 // ---- Soll-Ist (Warenentnahme vs. verkauft) ---------------------------------------
 export function sollIst(q) {
   const [a, b] = q.from || q.to || q.date ? rangeFromQuery(q, H()) : periodRange('day', todayBerlin(H()), H());
-  const rows = all(`SELECT ar.id, ar.name, ar.track_stock, c.name AS category,
-      (SELECT COALESCE(SUM(CASE kind WHEN 'entnahme' THEN qty ELSE -qty END),0) FROM stock_movements s WHERE s.article_id=ar.id AND s.ts>=? AND s.ts<?) AS entnommen,
-      (SELECT COALESCE(SUM(ii.qty),0) FROM invoice_items ii JOIN invoices v ON v.id=ii.invoice_id WHERE ii.article_id=ar.id AND v.closed_at>=? AND v.closed_at<?) AS verkauft,
-      (SELECT COALESCE(SUM(cc.qty),0) FROM cancellations cc JOIN order_items oi ON oi.id=cc.item_id WHERE oi.article_id=ar.id AND cc.cancelled_at>=? AND cc.cancelled_at<?) AS storniert,
-      (SELECT COALESCE(SUM(oi.qty-oi.cancelled_qty-oi.moved_qty-oi.billed_qty),0) FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE oi.article_id=ar.id AND o.status='open') AS offen
-    FROM articles ar JOIN categories c ON c.id=ar.category_id
-    WHERE ar.track_stock=1 OR EXISTS(SELECT 1 FROM stock_movements s WHERE s.article_id=ar.id AND s.ts>=? AND s.ts<?)
-    ORDER BY c.sort, ar.sort, ar.name`, a, b, a, b, a, b, a, b);
-  const out = rows.map((r) => ({ ...r, differenz: r.entnommen - r.verkauft - r.offen }));
-  const movements = all(`SELECT s.*, ar.name AS article_name, u.name AS user_name FROM stock_movements s JOIN articles ar ON ar.id=s.article_id
+  const arts = all(`SELECT ar.id, ar.name, ar.track_stock, c.name AS category FROM articles ar JOIN categories c ON c.id=ar.category_id
+      ORDER BY c.sort, ar.sort, ar.name`);
+  const variants = all('SELECT * FROM article_variants ORDER BY sort, id');
+  const n = (sql, ...p) => one(sql, ...p).n;
+  const vc = (col, vid) => (vid == null ? `${col} IS NULL` : `${col}=${Number(vid)}`);
+  const rows = [];
+  for (const ar of arts) {
+    const vs = variants.filter((v) => v.article_id === ar.id);
+    // Jede Variante wird einzeln gezählt (z. B. Shot, Longdrink, Flasche)
+    const units = vs.length
+      ? [...vs.map((v) => ({ vid: v.id, name: `${ar.name} – ${v.name}` })), { vid: null, name: ar.name, onlyData: true }]
+      : [{ vid: null, name: ar.name }];
+    for (const u of units) {
+      const r = {
+        id: ar.id, variant_id: u.vid, name: u.name, category: ar.category, track_stock: ar.track_stock,
+        entnommen: n(`SELECT COALESCE(SUM(CASE kind WHEN 'entnahme' THEN qty ELSE -qty END),0) n FROM stock_movements s
+            WHERE s.article_id=? AND ${vc('s.variant_id', u.vid)} AND s.ts>=? AND s.ts<?`, ar.id, a, b),
+        verkauft: n(`SELECT COALESCE(SUM(ii.qty),0) n FROM invoice_items ii JOIN invoices v ON v.id=ii.invoice_id JOIN order_items oi ON oi.id=ii.item_id
+            WHERE ii.article_id=? AND ${vc('oi.variant_id', u.vid)} AND v.closed_at>=? AND v.closed_at<?`, ar.id, a, b),
+        storniert: n(`SELECT COALESCE(SUM(cc.qty),0) n FROM cancellations cc JOIN order_items oi ON oi.id=cc.item_id
+            WHERE cc.kind='storno' AND oi.article_id=? AND ${vc('oi.variant_id', u.vid)} AND cc.cancelled_at>=? AND cc.cancelled_at<?`, ar.id, a, b),
+        per_ec: n(`SELECT COALESCE(SUM(cc.qty),0) n FROM cancellations cc JOIN order_items oi ON oi.id=cc.item_id
+            WHERE cc.kind='ec' AND oi.article_id=? AND ${vc('oi.variant_id', u.vid)} AND cc.cancelled_at>=? AND cc.cancelled_at<?`, ar.id, a, b),
+        offen: n(`SELECT COALESCE(SUM(oi.qty-oi.cancelled_qty-oi.moved_qty-oi.billed_qty),0) n FROM order_items oi JOIN orders o ON o.id=oi.order_id
+            WHERE oi.article_id=? AND ${vc('oi.variant_id', u.vid)} AND o.status='open'`, ar.id),
+      };
+      const hasData = r.entnommen || r.verkauft || r.storniert || r.per_ec || r.offen;
+      if (u.onlyData ? !hasData : !(ar.track_stock || hasData)) continue;
+      // Differenz = entnommen − verkauft − per EC bezahlt − noch auf offenen Tischen
+      r.differenz = r.entnommen - r.verkauft - r.per_ec - r.offen;
+      rows.push(r);
+    }
+  }
+  const movements = all(`SELECT s.*, ar.name || COALESCE(' – ' || av.name, '') AS article_name, u.name AS user_name FROM stock_movements s
+      JOIN articles ar ON ar.id=s.article_id LEFT JOIN article_variants av ON av.id=s.variant_id
       JOIN users u ON u.id=s.user_id WHERE s.ts>=? AND s.ts<? ORDER BY s.id DESC`, a, b);
-  return { from: a, to: b, rows: out, movements };
+  return { from: a, to: b, rows, movements };
 }
 
 // ---- Live-Übersicht ----------------------------------------------------------
@@ -235,17 +266,18 @@ export function live() {
   const sessions = all(`SELECT s.id, s.device, s.kind, s.created_at, s.last_seen, u.id AS user_id, u.name, u.role, u.personal_nr FROM sessions s
       JOIN users u ON u.id=s.user_id WHERE s.ended_at IS NULL AND s.last_seen>=? ORDER BY s.created_at`, new Date(Date.now() - 12 * 3600000).toISOString());
   const rev = one("SELECT COALESCE(SUM(total),0) v, SUM(kind='rechnung') n FROM invoices WHERE closed_at>=? AND closed_at<?", a, b);
-  const st = one('SELECT COUNT(*) n, COALESCE(SUM(total),0) v FROM cancellations WHERE cancelled_at>=? AND cancelled_at<?', a, b);
+  const st = one("SELECT COUNT(*) n, COALESCE(SUM(total),0) v FROM cancellations WHERE kind='storno' AND cancelled_at>=? AND cancelled_at<?", a, b);
+  const ec = one("SELECT COUNT(DISTINCT order_id) n, COALESCE(SUM(total),0) v FROM cancellations WHERE kind='ec' AND cancelled_at>=? AND cancelled_at<?", a, b);
   const mv = one('SELECT COUNT(*) n FROM item_moves WHERE moved_at>=? AND moved_at<?', a, b).n;
   return {
     day: todayBerlin(h), from: a, tables, open_orders: open, sessions,
     kpi: {
       umsatz: rev.v, rechnungen: rev.n || 0, offene_tische: open.length, offener_wert: open.reduce((s, t) => s + t.open_total, 0),
-      stornos: st.n, storno_wert: st.v, verschiebungen: mv, warnungen_offen: one("SELECT COUNT(*) n FROM alerts WHERE status='offen'").n,
+      stornos: st.n, storno_wert: st.v, ec_tische: ec.n, ec_wert: ec.v, verschiebungen: mv, warnungen_offen: one("SELECT COUNT(*) n FROM alerts WHERE status='offen'").n,
     },
     events: all('SELECT * FROM audit_log ORDER BY seq DESC LIMIT 80'),
     cancellations: all(`SELECT c.*, uc.name AS cancelled_by_name, ue.name AS entered_by_name FROM cancellations c JOIN users uc ON uc.id=c.cancelled_by
-        JOIN users ue ON ue.id=c.entered_by WHERE c.cancelled_at>=? ORDER BY c.id DESC LIMIT 30`, a),
+        JOIN users ue ON ue.id=c.entered_by WHERE c.kind='storno' AND c.cancelled_at>=? ORDER BY c.id DESC LIMIT 30`, a),
     invoices: invoiceSearch({ from: todayBerlin(h), to: todayBerlin(h) }).slice(0, 30),
   };
 }

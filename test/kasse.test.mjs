@@ -146,7 +146,7 @@ test('Teilzahlung, Wiedereröffnung mit Stornorechnung, Originalrechnung bleibt 
   const t = tab(6);
   await call('POST', '/api/pos/items', { table_id: t.id, article_id: art('Tiramisu').id, qty: 2 }, T.anna);
   const second = (await call('POST', '/api/pos/items', { table_id: t.id, article_id: art('Tee').id, qty: 1 }, T.anna)).j;
-  const part = await call('POST', `/api/pos/orders/${second.order_id}/pay`, { method: 'EC-Karte', items: [{ item_id: second.item.id, qty: 1 }] }, T.anna);
+  const part = await call('POST', `/api/pos/orders/${second.order_id}/pay`, { method: 'Kreditkarte', items: [{ item_id: second.item.id, qty: 1 }] }, T.anna);
   assert.equal(part.j.closed, false);
   const rest = await call('POST', `/api/pos/orders/${second.order_id}/pay`, { method: 'Bar' }, T.anna);
   assert.equal(rest.j.closed, true);
@@ -161,7 +161,7 @@ test('Teilzahlung, Wiedereröffnung mit Stornorechnung, Originalrechnung bleibt 
   assert.equal(afterInv.reversed_by.invoice_no, re.j.storno_invoice_no);
   const o = (await call('GET', `/api/pos/tables/${t.id}`, null, T.anna)).j;
   assert.equal(o.open_total, 2 * art('Tiramisu').price);
-  const fin = await call('POST', `/api/pos/orders/${o.order.id}/pay`, { method: 'EC-Karte' }, T.anna);
+  const fin = await call('POST', `/api/pos/orders/${o.order.id}/pay`, { method: 'Kreditkarte' }, T.anna);
   assert.equal(fin.j.closed, true);
   // Rechnungsnummern lückenlos
   const inv = (await call('GET', '/api/admin/invoices', null, T.admin)).j.map((i) => i.invoice_no).sort();
@@ -210,6 +210,84 @@ test('Admin-Eingriffe (Preis, Einstellungen, Benutzer) werden mit Vorher/Nachher
   assert.equal((await call('POST', '/api/admin/users', { personal_nr: 50, name: 'Neu', role: 'admin', pin: '1234' }, T.admin)).s, 400);
 });
 
+test('Mit EC zahlen: alle Artikel werden storniert, getrennt geführt, ohne Storno-Warnungen', async () => {
+  const t = tab(13);
+  const c = (await call('POST', '/api/pos/items', { table_id: t.id, article_id: art('Cola 0').id, qty: 2 }, T.anna)).j;
+  await call('POST', '/api/pos/items', { table_id: t.id, article_id: art('Pizza Salami').id, qty: 1 }, T.anna);
+  // Normaler Bezahlweg mit EC ist gesperrt – EC nur über „Mit EC zahlen“
+  assert.equal((await call('POST', `/api/pos/orders/${c.order_id}/pay`, { method: 'EC-Karte' }, T.anna)).s, 400);
+  const alertsBefore = (await call('GET', '/api/admin/alerts', null, T.admin)).j.length;
+  const stornosBefore = (await call('GET', '/api/admin/cancellations?from=2000-01-01&to=2999-01-01', null, T.admin)).j.length;
+  const r = await call('POST', `/api/pos/orders/${c.order_id}/ec-pay`, {}, T.anna);
+  assert.equal(r.s, 200, JSON.stringify(r.j));
+  assert.equal(r.j.closed, true);
+  assert.equal(r.j.total, 2 * art('Cola 0').price + art('Pizza Salami').price);
+  // Getrennt: normale Storno-Liste unverändert, EC-Liste mit Vermerk
+  assert.equal((await call('GET', '/api/admin/cancellations?from=2000-01-01&to=2999-01-01', null, T.admin)).j.length, stornosBefore);
+  const ec = (await call('GET', '/api/admin/cancellations?from=2000-01-01&to=2999-01-01&kind=ec', null, T.admin)).j.filter((x) => x.order_id === c.order_id);
+  assert.equal(ec.length, 2);
+  assert.ok(ec.every((x) => x.reason === 'Mit EC bezahlt – daher storniert' && x.kind === 'ec'));
+  assert.equal((await call('GET', '/api/admin/alerts', null, T.admin)).j.length, alertsBefore, 'EC-Stornos lösen keine Warnungen aus');
+  // Tisch ist frei, Nullbeleg mit Zahlungsart EC, Protokoll vollständig
+  assert.equal((await call('GET', `/api/pos/tables/${t.id}`, null, T.anna)).j.order, null);
+  const inv = (await call('GET', '/api/admin/invoices', null, T.admin)).j.find((v) => v.table_no === 13);
+  assert.equal(inv.total, 0);
+  assert.equal(inv.payment_method, 'EC-Karte');
+  const evs = (await call('GET', `/api/admin/audit?order_id=${c.order_id}`, null, T.admin)).j.rows.map((e) => e.type);
+  for (const type of ['ITEM_ADDED', 'EC_STORNO', 'EC_PAYMENT', 'TABLE_CLOSED']) assert.ok(evs.includes(type), type);
+  // Auswertungen: EC getrennt ausgewiesen; Soll-Ist zieht EC-Artikel ab
+  const emp = (await call('GET', '/api/admin/employees?period=month&date=' + new Date().toISOString().slice(0, 10), null, T.admin)).j.rows.find((x) => x.name === 'Anna Service');
+  assert.ok(emp.ec_tische >= 1 && emp.ec_wert >= r.j.total);
+  const rev = (await call('GET', '/api/admin/revenue?from=2000-01-01&to=2999-01-01', null, T.admin)).j;
+  assert.ok(rev.ec.v >= r.j.total);
+  const soll = (await call('GET', '/api/admin/stock?from=2000-01-01&to=2999-01-01', null, T.admin)).j.rows.find((x) => x.name.startsWith('Cola 0'));
+  assert.ok(soll.per_ec >= 2);
+  assert.equal(soll.differenz, soll.entnommen - soll.verkauft - soll.per_ec - soll.offen);
+});
+
+test('Varianten: Artikel mit Shot/Longdrink/Flasche, Auswahl Pflicht, Lager je Variante', async () => {
+  const cat = boot.categories[0].id;
+  const r = await call('POST', '/api/admin/articles', { name: 'Bacardi', category_id: cat, price: 0, vat: 19, track_stock: 1,
+    variants: [{ name: 'Shot', price: 400 }, { name: 'Longdrink', price: 750 }, { name: 'Flasche', price: 6500 }] }, T.admin);
+  assert.equal(r.s, 200, JSON.stringify(r.j));
+  assert.equal((await call('POST', '/api/admin/articles', { name: 'X', category_id: cat, price: 0, variants: [{ name: 'A', price: 1 }, { name: 'a', price: 2 }] }, T.admin)).s, 400);
+  const b2 = (await call('GET', '/api/pos/bootstrap', null, T.anna)).j;
+  const vs = b2.variants.filter((v) => v.article_id === r.j.id);
+  assert.deepEqual(vs.map((v) => v.name), ['Shot', 'Longdrink', 'Flasche']);
+  assert.equal(b2.articles.find((a) => a.id === r.j.id).price, 400); // „ab“-Preis
+  const t = tab(14);
+  const no = await call('POST', '/api/pos/items', { table_id: t.id, article_id: r.j.id }, T.anna);
+  assert.equal(no.s, 400);
+  assert.equal(no.j.needs_variant, true);
+  const ld = vs.find((v) => v.name === 'Longdrink');
+  const it = (await call('POST', '/api/pos/items', { table_id: t.id, article_id: r.j.id, variant_id: ld.id, qty: 2 }, T.anna)).j;
+  assert.equal(it.item.article_name, 'Bacardi (Longdrink)');
+  assert.equal(it.item.unit_price, 750);
+  assert.equal(it.item.variant_id, ld.id);
+  // Verschieben behält die Variante
+  await call('POST', '/api/pos/move', { items: [{ item_id: it.item.id, qty: 1 }], to_table_id: tab(15).id }, T.anna);
+  const moved = (await call('GET', `/api/admin/lifecycle/${it.item.id}`, null, T.admin)).j.items;
+  assert.ok(moved.every((x) => x.variant_id === ld.id));
+  // Lager je Variante
+  assert.equal((await call('POST', '/api/admin/stock', { article_id: r.j.id, qty: 5 }, T.admin)).s, 400);
+  assert.equal((await call('POST', '/api/admin/stock', { article_id: r.j.id, variant_id: ld.id, qty: 5 }, T.admin)).s, 200);
+  await call('POST', `/api/pos/orders/${it.order_id}/pay`, { method: 'Bar' }, T.anna);
+  const o15 = (await call('GET', `/api/pos/tables/${tab(15).id}`, null, T.anna)).j;
+  await call('POST', `/api/pos/orders/${o15.order.id}/pay`, { method: 'Bar' }, T.anna);
+  const row = (await call('GET', '/api/admin/stock?from=2000-01-01&to=2999-01-01', null, T.admin)).j.rows.find((x) => x.name === 'Bacardi – Longdrink');
+  assert.equal(row.entnommen, 5);
+  assert.equal(row.verkauft, 2);
+  assert.equal(row.differenz, 3);
+  // Bearbeiten: Variante umbenennen, Flasche entfernen → deaktiviert (nicht gelöscht), protokolliert
+  const shot = vs.find((v) => v.name === 'Shot');
+  assert.equal((await call('PUT', `/api/admin/articles/${r.j.id}`, { name: 'Bacardi', category_id: cat, price: 0, vat: 19, track_stock: 1,
+    variants: [{ id: shot.id, name: 'Shot 2 cl', price: 450 }, { id: ld.id, name: 'Longdrink', price: 750 }] }, T.admin)).s, 200);
+  const b3 = (await call('GET', '/api/pos/bootstrap', null, T.anna)).j;
+  assert.deepEqual(b3.variants.filter((v) => v.article_id === r.j.id).map((v) => `${v.name}:${v.price}`), ['Shot 2 cl:450', 'Longdrink:750']);
+  const ev = (await call('GET', '/api/admin/audit?type=ARTICLE_PRICE_CHANGED', null, T.admin)).j.rows[0];
+  assert.equal(JSON.parse(ev.before_json).varianten.length, 3);
+});
+
 test('Integrität vor Manipulationsversuchen: alles in Ordnung', async () => {
   const r = (await call('GET', '/api/admin/integrity', null, T.admin)).j;
   assert.equal(r.ok, true, JSON.stringify(r.problems));
@@ -248,7 +326,7 @@ test('Tagesabschluss löschen: nur ältester, nur mit Bestätigung, offene Tisch
   assert.equal(c1.s, 200);
   const invBefore = (await call('GET', '/api/admin/invoices', null, T.admin)).j.length;
   // Nach dem Abschluss: Tisch 10 wird bezahlt
-  const pay10 = (await call('POST', `/api/pos/orders/${a10.order_id}/pay`, { method: 'EC-Karte' }, T.anna)).j;
+  const pay10 = (await call('POST', `/api/pos/orders/${a10.order_id}/pay`, { method: 'Kreditkarte' }, T.anna)).j;
   const c2 = await call('POST', '/api/admin/closings', {}, T.admin);
   const closings = (await call('GET', '/api/admin/closings', null, T.admin)).j;
   const [newest, oldest] = [closings[0], closings[closings.length - 1]];

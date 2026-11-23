@@ -30,11 +30,11 @@ let liveFeedPaused = false;
 const CATS = [
   ['', 'Alle'], ['storno', 'Stornos'], ['verschiebung', 'Verschiebungen'], ['abschluss', 'Abschlüsse/Rechnungen'], ['preis', 'Preisänderungen'],
   ['wiedereroeffnung', 'Wiedereröffnungen'], ['artikel', 'Artikeleingaben'], ['tisch', 'Tisch'], ['anmeldung', 'An-/Abmeldung'],
-  ['eingabe', 'Abgebrochene Dialoge'], ['freigabe', 'Freigaben'], ['schicht', 'Schicht/Tag'], ['lager', 'Lager'], ['admin', 'Admin-Eingriffe'], ['system', 'System'],
+  ['ec', 'Mit EC bezahlt'], ['eingabe', 'Abgebrochene Dialoge'], ['freigabe', 'Freigaben'], ['schicht', 'Schicht/Tag'], ['lager', 'Lager'], ['admin', 'Admin-Eingriffe'], ['system', 'System'],
 ];
 const label = (t) => META?.type_labels?.[t] || t;
 const userName = (id) => META?.users.find((u) => u.id === id)?.name || '';
-const evClass = (t) => (t === 'ITEM_CANCELLED' || t === 'INVOICE_REVERSED' ? 'storno' : t === 'ITEM_MOVED' || t === 'TABLE_CHANGED' ? 'move'
+const evClass = (t) => (t === 'ITEM_CANCELLED' || t === 'INVOICE_REVERSED' ? 'storno' : t === 'EC_STORNO' || t === 'EC_PAYMENT' ? 'ec' : t === 'ITEM_MOVED' || t === 'TABLE_CHANGED' ? 'move'
   : t === 'TABLE_REOPENED' ? 'reopen' : t.includes('PRICE') ? 'price' : t === 'INVOICE_CREATED' || t === 'TABLE_CLOSED' ? 'bill' : '');
 const J = (s) => { try { return s ? JSON.parse(s) : null; } catch { return null; } };
 
@@ -50,6 +50,8 @@ function describe(e) {
   switch (e.type) {
     case 'ITEM_ADDED': return `${who} gibt ${art} ein (${t}, ${euro(e.amount)})${d.eingabe ? ` <span class="muted">[Eingabe ${esc(d.eingabe)}]</span>` : ''}`;
     case 'ITEM_QTY_INCREASED': return `${who} erhöht ${esc(e.article_name)} um ${e.qty} (${t}) auf ${a.menge}`;
+    case 'EC_STORNO': return `${who}: ${art} (${t}, ${euro(e.amount)}) <span class="badge info">mit EC bezahlt – storniert</span>`;
+    case 'EC_PAYMENT': return `<b>Mit EC bezahlt</b>: ${who} kassiert ${t} per EC (${euro(e.amount)}) – Artikel storniert und vermerkt`;
     case 'ITEM_CANCELLED': return `<b style="color:var(--danger)">STORNO</b>: ${who} storniert ${art} (${t}, ${euro(e.amount)})${r}<br><span class="small muted">eingegeben von ${esc(d.eingegeben_von)} ${d.sekunden_nach_eingabe != null ? `· ${d.sekunden_nach_eingabe} s nach Eingabe` : ''}${d.freigegeben_von ? ' · Freigabe ' + esc(d.freigegeben_von) : ''}</span>`;
     case 'ITEM_MOVED': return `${who} verschiebt ${art} von Tisch ${e.table_no} → <b>Tisch ${e.target_table_no}</b>${r}`;
     case 'TABLE_CHANGED': return `${who}: Tischwechsel ${e.table_no} → <b>${e.target_table_no}</b>${r}`;
@@ -434,6 +436,7 @@ VIEWS.live = async (el, soft) => {
       <div class="kpi"><div class="l">Offene Tische</div><div class="v">${k.offene_tische}</div></div>
       <div class="kpi"><div class="l">Offener Wert</div><div class="v">${euro(k.offener_wert)}</div></div>
       <div class="kpi ${k.stornos ? 'danger' : ''}"><div class="l">Stornos</div><div class="v">${k.stornos} · ${euro(k.storno_wert)}</div></div>
+      <div class="kpi"><div class="l">Mit EC bezahlt</div><div class="v">${k.ec_tische} · ${euro(k.ec_wert)}</div></div>
       <div class="kpi"><div class="l">Verschiebungen</div><div class="v">${k.verschiebungen}</div></div>
       <div class="kpi ${k.warnungen_offen ? 'warn' : ''}"><div class="l">Offene Warnungen</div><div class="v">${k.warnungen_offen}</div></div>
     </div>
@@ -557,12 +560,29 @@ VIEWS.rechnungen = async (el) => {
 };
 
 VIEWS.stornos = async (el) => {
+  const isEc = qs().get('kind') === 'ec';
   el.innerHTML = `<div class="head"><h1>Stornierungen</h1><span id="exp"></span></div>
-    <form class="filters" id="f">${rangeInputs()}<label>Mitarbeiter<select name="user_id">${userOptions(qs().get('user_id'))}</select></label><label>Tisch<input type="number" name="table_no"></label><button class="btn primary">Anzeigen</button></form><div id="res"></div>`;
+    <div class="tabs"><a class="chip ${isEc ? '' : 'on'}" href="#stornos">Stornos</a><a class="chip ${isEc ? 'on' : ''}" href="#stornos?kind=ec">Mit EC bezahlt</a></div>
+    <form class="filters" id="f">${rangeInputs()}<label>Mitarbeiter<select name="user_id">${userOptions(qs().get('user_id'))}</select></label><label>Tisch<input type="number" name="table_no"></label>
+      <input type="hidden" name="kind" value="${isEc ? 'ec' : ''}"><button class="btn primary">Anzeigen</button></form><div id="res"></div>`;
   const getQ = () => clean(formVals($('#f')));
   $('#exp').append(exportButtons('cancellations', getQ));
   const load = async () => {
     const rows = await api.get(`/api/admin/cancellations?${new URLSearchParams(getQ())}`);
+    if (isEc) {
+      // Bei EC-Zahlung stornierte Artikel – getrennt von echten Stornos, je Tisch zusammengefasst
+      const groups = {};
+      for (const c of rows) (groups[c.audit_seq ? `${c.order_id}` : c.id] ||= []).push(c);
+      const tables = Object.values(groups);
+      $('#res').innerHTML = `<div class="notice info" style="margin-bottom:12px">Diese Artikel wurden <b>mit EC bezahlt</b> und daher storniert. Sie zählen nicht als normale Stornos und lösen keine Warnungen aus.</div>
+        <div class="kpis"><div class="kpi"><div class="l">Tische mit EC</div><div class="v">${tables.length}</div></div><div class="kpi"><div class="l">Summe EC</div><div class="v">${euro(rows.reduce((s, r) => s + r.total, 0))}</div></div>
+        <div class="kpi"><div class="l">Artikel</div><div class="v">${rows.reduce((s, r) => s + r.qty, 0)}</div></div></div>
+        <div class="table-wrap"><table class="data"><thead><tr><th>Zeit</th><th>Tisch</th><th>Artikel</th><th class="num">Menge</th><th class="num">Einzel</th><th class="num">Gesamt</th><th>Eingegeben</th><th>Kassiert von</th><th>Vermerk</th></tr></thead><tbody>
+        ${rows.map((c) => `<tr class="click" data-seq="${c.audit_seq}"><td>${fmtDT(c.cancelled_at)}</td><td>${c.table_no}</td><td>${esc(c.article_name)} <span class="muted small">ID ${c.lifecycle_id}</span></td><td class="num">${c.qty}</td><td class="num">${euro(c.unit_price)}</td><td class="num"><b>${euro(c.total)}</b></td>
+          <td>${fmtDT(c.entered_at)}<br><small>${esc(c.entered_by_name)}</small></td><td>${esc(c.cancelled_by_name)}</td><td><span class="badge info">Mit EC bezahlt</span></td></tr>`).join('') || '<tr><td colspan="9" class="muted">Keine EC-Zahlungen im Zeitraum</td></tr>'}</tbody></table></div>`;
+      $$('#res [data-seq]').forEach((x) => x.addEventListener('click', () => openEvent(Number(x.dataset.seq))));
+      return;
+    }
     $('#res').innerHTML = `<div class="kpis"><div class="kpi danger"><div class="l">Anzahl</div><div class="v">${rows.length}</div></div><div class="kpi danger"><div class="l">Gesamtwert</div><div class="v">${euro(rows.reduce((s, r) => s + r.total, 0))}</div></div>
       <div class="kpi"><div class="l">davon fremde Eingaben</div><div class="v">${rows.filter((r) => r.entered_by !== r.cancelled_by).length}</div></div><div class="kpi"><div class="l">mit Freigabe</div><div class="v">${rows.filter((r) => r.approved_by).length}</div></div></div>
       <div class="table-wrap"><table class="data"><thead><tr><th>Storno-Zeit</th><th>Tisch</th><th>Artikel</th><th class="num">Menge</th><th class="num">Einzel</th><th class="num">Gesamt</th><th>Eingegeben</th><th>Storniert von</th><th>Freigabe</th><th>Grund</th></tr></thead><tbody>
@@ -635,10 +655,10 @@ VIEWS.mitarbeiter = async (el) => {
   const load = async () => {
     const d = await api.get(`/api/admin/employees?${new URLSearchParams(getQ())}`);
     $('#res').innerHTML = `<p class="muted">${fmtDT(d.from, false)} bis ${fmtDT(d.to, false)}</p><div class="table-wrap"><table class="data"><thead><tr><th>Mitarbeiter</th><th class="num">Tische</th><th class="num">Artikel eingeg.</th><th class="num">Umsatz</th><th class="num">Rechnungen</th>
-      <th class="num">Stornos</th><th class="num">Stornowert</th><th class="num">Quote</th><th class="num">Sofort-St.</th><th class="num">Verschieb.</th><th class="num">Wiedereröff.</th><th class="num">Preisänd.</th><th class="num">Rabatte</th><th class="num">Warnungen</th></tr></thead><tbody>
+      <th class="num">Stornos</th><th class="num">Stornowert</th><th class="num">Quote</th><th class="num">Sofort-St.</th><th class="num">EC (stor.)</th><th class="num">Verschieb.</th><th class="num">Wiedereröff.</th><th class="num">Preisänd.</th><th class="num">Rabatte</th><th class="num">Warnungen</th></tr></thead><tbody>
       ${d.rows.map((r) => `<tr class="click" data-u="${r.id}"><td><b>${esc(r.name)}</b><br><small class="muted">Nr. ${r.personal_nr} · ${esc(r.role)}</small></td><td class="num">${r.tische}</td><td class="num">${r.artikel_eingegeben}</td><td class="num">${euro(r.umsatz)}</td><td class="num">${r.rechnungen}</td>
         <td class="num">${r.stornos ? `<b style="color:var(--danger)">${r.stornos}</b>` : 0}</td><td class="num">${euro(r.storno_wert)}</td><td class="num">${r.storno_quote >= 15 ? `<b style="color:var(--danger)">${r.storno_quote} %</b>` : r.storno_quote + ' %'}</td>
-        <td class="num">${r.sofortstornos}</td><td class="num">${r.verschiebungen}</td><td class="num">${r.wiedereroeffnungen}</td><td class="num">${r.preisaenderungen}</td><td class="num">${euro(r.rabatte)}</td><td class="num">${r.warnungen}</td></tr>`).join('')}</tbody></table></div>
+        <td class="num">${r.sofortstornos}</td><td class="num">${r.ec_tische ? r.ec_tische + ' · ' + euro(r.ec_wert) : 0}</td><td class="num">${r.verschiebungen}</td><td class="num">${r.wiedereroeffnungen}</td><td class="num">${r.preisaenderungen}</td><td class="num">${euro(r.rabatte)}</td><td class="num">${r.warnungen}</td></tr>`).join('')}</tbody></table></div>
       <p class="small muted">Quote = stornierte Menge ÷ eingegebene Menge. Sofort-Stornos = Storno innerhalb von ${META.settings.alert_quick_storno_seconds} Sekunden nach Eingabe. Klick auf eine Zeile öffnet das Protokoll dieses Mitarbeiters.</p>`;
     $$('#res [data-u]').forEach((tr) => tr.addEventListener('click', () => {
       const from = new Date(d.from); const to = new Date(d.to);
@@ -649,6 +669,81 @@ VIEWS.mitarbeiter = async (el) => {
   $('#f').addEventListener('submit', (e) => { e.preventDefault(); load(); });
   await load();
 };
+
+// Artikel anlegen/bearbeiten – mit Abfrage der Varianten (z. B. Bacardi: Shot, Longdrink, Flasche)
+function articleForm(a, done) {
+  const existing = a ? (META.variants || []).filter((v) => v.article_id === a.id && v.active) : [];
+  let rows = existing.map((v) => ({ id: v.id, name: v.name, price: num(v.price) }));
+  let hasVar = rows.length > 0;
+  const body = h(`<div>
+    <div class="fields">
+      <label class="field">Name<input type="text" id="an" maxlength="60" value="${esc(a?.name || '')}"></label>
+      <label class="field">Kategorie<select id="ac">${META.categories.map((c) => `<option value="${c.id}" ${a?.category_id === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
+      <label class="field">MwSt-Satz<select id="av">${[[19, '19 %'], [7, '7 %'], [0, '0 %']].map(([v, l]) => `<option value="${v}" ${(a?.vat ?? 19) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <label class="field">Artikelnummer (optional)<input type="number" id="aplu" value="${a?.plu ?? ''}"></label>
+      <label class="field">Sortierung<input type="number" id="asort" value="${a?.sort ?? 0}"></label>
+      <label class="field"><span>Lagerartikel (Soll-Ist)</span><input type="checkbox" id="atrack" ${a?.track_stock ? 'checked' : ''} style="width:22px;height:22px"></label>
+      <label class="field"><span>Aktiv</span><input type="checkbox" id="aact" ${!a || a.active ? 'checked' : ''} style="width:22px;height:22px"></label>
+    </div>
+    <div class="section"><div class="lbl">Hat dieser Artikel Varianten? <span class="muted small">(z. B. Shot, Longdrink, Flasche)</span></div>
+      <div class="chips" id="hv"><button type="button" class="chip" data-hv="0">Nein</button><button type="button" class="chip" data-hv="1">Ja</button></div></div>
+    <div class="section" id="psec"><label class="field">Preis (€)<input type="text" inputmode="decimal" id="ap" placeholder="3,80" value="${a ? num(a.price) : ''}"></label></div>
+    <div class="section hidden" id="vsec">
+      <label class="field">Wie viele Varianten?<select id="vn">${[2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => `<option value="${n}">${n}</option>`).join('')}</select></label>
+      <div id="vrows" style="display:grid;gap:8px;margin-top:10px"></div>
+      ${existing.length ? '<p class="small muted">Entfernte Varianten werden deaktiviert, nicht gelöscht – alte Buchungen bleiben erhalten.</p>' : ''}
+    </div></div>`);
+  const syncRows = () => { rows = $$('#vrows .vrow', body).map((r) => ({ id: Number(r.dataset.id) || null, name: $('.vname', r).value, price: $('.vprice', r).value })); };
+  const renderRows = () => {
+    const n = Number($('#vn', body).value);
+    while (rows.length < n) rows.push({ id: null, name: '', price: '' });
+    rows = rows.slice(0, n);
+    $('#vrows', body).innerHTML = rows.map((r, i) => `<div class="vrow row" data-id="${r.id || ''}" style="flex-wrap:nowrap">
+      <span class="muted" style="width:22px">${i + 1}.</span>
+      <input type="text" class="vname" maxlength="30" placeholder="Name, z. B. ${['Shot', 'Longdrink', 'Flasche'][i] || 'Variante'}" value="${esc(r.name)}">
+      <input type="text" class="vprice" inputmode="decimal" placeholder="Preis €" style="max-width:110px" value="${esc(r.price)}"></div>`).join('');
+  };
+  const setHas = (v) => {
+    syncRows();
+    hasVar = v;
+    $$('[data-hv]', body).forEach((b) => b.classList.toggle('on', b.dataset.hv === (v ? '1' : '0')));
+    $('#vsec', body).classList.toggle('hidden', !v);
+    $('#psec', body).classList.toggle('hidden', v);
+    if (v) { $('#vn', body).value = String(Math.max(2, Math.min(10, rows.length || 2))); renderRows(); }
+  };
+  $('#hv', body).addEventListener('click', (e) => { const b = e.target.closest('[data-hv]'); if (b) setHas(b.dataset.hv === '1'); });
+  $('#vn', body).addEventListener('change', () => { syncRows(); renderRows(); });
+  setHas(hasVar);
+  modal({
+    title: a ? `Artikel bearbeiten: ${a.name}` : 'Neuer Artikel', body, wide: true,
+    actions: [{ label: 'Abbrechen' }, {
+      label: 'Speichern', kind: 'primary', onClick: async () => {
+        syncRows();
+        const b = {
+          name: $('#an', body).value, category_id: Number($('#ac', body).value), vat: Number($('#av', body).value),
+          plu: $('#aplu', body).value || null, sort: Number($('#asort', body).value || 0), track_stock: $('#atrack', body).checked, active: $('#aact', body).checked,
+        };
+        if (hasVar) {
+          b.variants = rows.map((r, i) => {
+            const p = parseEuro(r.price);
+            if (!String(r.name).trim()) throw new Error(`Bitte Namen für Variante ${i + 1} eingeben`);
+            if (p == null || Number.isNaN(p)) throw new Error(`Bitte gültigen Preis für Variante ${i + 1} eingeben`);
+            return { id: r.id, name: r.name.trim(), price: p };
+          });
+          b.price = Math.min(...b.variants.map((v) => v.price));
+        } else {
+          const p = parseEuro($('#ap', body).value);
+          if (p == null || Number.isNaN(p)) throw new Error('Ungültiger Preis');
+          b.price = p;
+          b.variants = [];
+        }
+        if (a) await api.put(`/api/admin/articles/${a.id}`, b); else await api.post('/api/admin/articles', b);
+        toast('Gespeichert (protokolliert)', 'ok');
+        done();
+      },
+    }],
+  });
+}
 
 // Ältesten Tagesabschluss mit allen Einzelheiten löschen (nur Administrator, mit Bestätigung)
 function deleteClosing(id, done) {
@@ -682,7 +777,8 @@ VIEWS.umsatz = async (el) => {
     const d = await api.get(`/api/admin/revenue?${new URLSearchParams(getQ())}`);
     $('#res').innerHTML = `<div class="kpis"><div class="kpi"><div class="l">Umsatz</div><div class="v">${euro(d.total)}</div></div>
       ${d.byKind.map((k) => `<div class="kpi ${k.kind === 'storno' ? 'warn' : ''}"><div class="l">${k.kind === 'storno' ? 'Stornorechnungen' : 'Rechnungen'}</div><div class="v">${k.n} · ${euro(k.total)}</div></div>`).join('')}
-      <div class="kpi danger"><div class="l">Stornierte Positionen</div><div class="v">${d.stornos.n} · ${euro(d.stornos.v)}</div></div></div>
+      <div class="kpi danger"><div class="l">Stornierte Positionen</div><div class="v">${d.stornos.n} · ${euro(d.stornos.v)}</div></div>
+      <div class="kpi"><div class="l">Mit EC bezahlt (storniert)</div><div class="v">${d.ec.n} Tische · ${euro(d.ec.v)}</div></div></div>
       <div class="cols"><div class="card"><h2>Nach Zahlungsart</h2>${bars(d.byMethod, 'total', (r) => `${esc(r.method)} (${r.n})`)}</div>
       <div class="card"><h2>Nach Kategorie</h2>${bars(d.byCategory, 'total', (r) => esc(r.name))}</div></div>
       <div class="cols" style="margin-top:14px"><div class="card"><h2>Nach Uhrzeit</h2>${bars(d.byHour, 'total', (r) => `${String(r.h).padStart(2, '0')}–${String((r.h + 1) % 24).padStart(2, '0')} Uhr`)}</div>
@@ -692,7 +788,7 @@ VIEWS.umsatz = async (el) => {
   const loadClosings = async () => {
     const cl = await api.get('/api/admin/closings');
     $('#cl').innerHTML = cl.map((c) => `<div style="padding:6px 0;border-bottom:1px solid var(--border)"><b>${fmtDT(c.to_ts, false)}</b> · ${esc(c.closed_by_name)} · Umsatz <b>${euro(c.data.total)}</b>
-      <div class="small muted">${fmtDT(c.from_ts, false)} – ${fmtDT(c.to_ts, false)} · Belege ${esc(c.data.rechnungen?.erste || '–')} bis ${esc(c.data.rechnungen?.letzte || '–')} · Stornos ${c.data.stornos.n} (${euro(c.data.stornos.v)}) · Rabatte ${euro(c.data.rabatte)}</div>
+      <div class="small muted">${fmtDT(c.from_ts, false)} – ${fmtDT(c.to_ts, false)} · Belege ${esc(c.data.rechnungen?.erste || '–')} bis ${esc(c.data.rechnungen?.letzte || '–')} · Stornos ${c.data.stornos.n} (${euro(c.data.stornos.v)}) · Mit EC bezahlt ${c.data.ec_zahlungen ? euro(c.data.ec_zahlungen.v) : '–'} · Rabatte ${euro(c.data.rabatte)}</div>
       <div class="small muted">${c.data.byMethod.map((m) => `${esc(m.method)} ${euro(m.total)}`).join(' · ')} · Protokollstand #${c.audit_seq}</div>
       ${can('manage') && c.id === cl[cl.length - 1].id ? `<button class="btn sm danger" data-delclose="${c.id}" style="margin-top:6px">Diesen (ältesten) Abschluss mit allen Einzelheiten löschen</button>` : ''}</div>`).join('') || '<span class="muted">Noch keine Tagesabschlüsse</span>';
     $$('[data-delclose]').forEach((b) => b.addEventListener('click', () => deleteClosing(Number(b.dataset.delclose), loadClosings)));
@@ -715,8 +811,8 @@ VIEWS.umsatz = async (el) => {
 
 VIEWS.sollist = async (el) => {
   el.innerHTML = `<div class="head"><h1>Soll-Ist-Kontrolle (Lager)</h1><span id="exp"></span></div>
-    <div class="notice info" style="margin-bottom:12px">Buchen Sie hier jede Warenentnahme aus dem Lager (z. B. 24 Flaschen Cola an die Theke). Das System vergleicht mit den tatsächlich abgerechneten Artikeln. <b>Differenz</b> = entnommen − verkauft − noch auf offenen Tischen. Eine positive Differenz bedeutet: Ware ist weg, aber nicht verbucht (oder Bruch/Schwund).</div>
-    ${can('stock') ? `<div class="card"><h2>Warenbewegung buchen</h2><form class="filters" id="sf" style="margin:0"><label>Artikel<select name="article_id">${META.articles.filter((a) => a.active).map((a) => `<option value="${a.id}">${esc(a.name)}</option>`).join('')}</select></label>
+    <div class="notice info" style="margin-bottom:12px">Buchen Sie hier jede Warenentnahme aus dem Lager (z. B. 24 Flaschen Cola an die Theke). Das System vergleicht mit den tatsächlich abgerechneten Artikeln. <b>Differenz</b> = entnommen − verkauft − per EC bezahlt − noch auf offenen Tischen. Artikel mit Varianten werden je Variante gezählt. Eine positive Differenz bedeutet: Ware ist weg, aber nicht verbucht (oder Bruch/Schwund).</div>
+    ${can('stock') ? `<div class="card"><h2>Warenbewegung buchen</h2><form class="filters" id="sf" style="margin:0"><label>Artikel<select name="article_id">${META.articles.filter((a) => a.active).map((a) => { const vs = (META.variants || []).filter((v) => v.article_id === a.id && v.active); return vs.length ? vs.map((v) => `<option value="${a.id}:${v.id}">${esc(a.name)} – ${esc(v.name)}</option>`).join('') : `<option value="${a.id}:">${esc(a.name)}</option>`; }).join('')}</select></label>
       <label>Menge (Stück)<input type="number" name="qty" min="1" required></label><label>Art<select name="kind"><option value="entnahme">Entnahme aus Lager</option><option value="rueckgabe">Rückgabe ins Lager</option></select></label>
       <label>Notiz<input type="text" name="note" maxlength="200"></label><button class="btn primary">Buchen</button></form></div>` : ''}
     <form class="filters" id="f" style="margin-top:14px">${rangeInputs()}<button class="btn primary">Anzeigen</button></form><div id="res"></div>`;
@@ -724,15 +820,16 @@ VIEWS.sollist = async (el) => {
   $('#exp').append(exportButtons('stock', getQ));
   const load = async () => {
     const d = await api.get(`/api/admin/stock?${new URLSearchParams(getQ())}`);
-    $('#res').innerHTML = `<div class="table-wrap"><table class="data"><thead><tr><th>Artikel</th><th>Kategorie</th><th class="num">Entnommen</th><th class="num">Verkauft</th><th class="num">Noch offen</th><th class="num">Storniert</th><th class="num">Differenz</th></tr></thead><tbody>
-      ${d.rows.map((r) => `<tr><td><b>${esc(r.name)}</b></td><td>${esc(r.category)}</td><td class="num">${r.entnommen}</td><td class="num">${r.verkauft}</td><td class="num">${r.offen}</td><td class="num">${r.storniert}</td>
-        <td class="num ${r.differenz > 0 ? 'diff-neg' : r.differenz < 0 ? 'diff-pos' : ''}">${r.differenz > 0 ? '+' : ''}${r.differenz}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">Keine Lagerartikel – Artikel in der Verwaltung als „Lagerartikel“ markieren oder eine Entnahme buchen.</td></tr>'}</tbody></table></div>
+    $('#res').innerHTML = `<div class="table-wrap"><table class="data"><thead><tr><th>Artikel</th><th>Kategorie</th><th class="num">Entnommen</th><th class="num">Verkauft</th><th class="num">Noch offen</th><th class="num">Storniert</th><th class="num">Per EC</th><th class="num">Differenz</th></tr></thead><tbody>
+      ${d.rows.map((r) => `<tr><td><b>${esc(r.name)}</b></td><td>${esc(r.category)}</td><td class="num">${r.entnommen}</td><td class="num">${r.verkauft}</td><td class="num">${r.offen}</td><td class="num">${r.storniert}</td><td class="num">${r.per_ec}</td>
+        <td class="num ${r.differenz > 0 ? 'diff-neg' : r.differenz < 0 ? 'diff-pos' : ''}">${r.differenz > 0 ? '+' : ''}${r.differenz}</td></tr>`).join('') || '<tr><td colspan="8" class="muted">Keine Lagerartikel – Artikel in der Verwaltung als „Lagerartikel“ markieren oder eine Entnahme buchen.</td></tr>'}</tbody></table></div>
       <div class="card" style="margin-top:14px"><h2>Buchungen im Zeitraum</h2>${d.movements.map((m) => `<div class="small" style="padding:3px 0">${fmtDT(m.ts)} · <b>${m.kind === 'entnahme' ? '+' : '−'}${m.qty} ${esc(m.article_name)}</b> · ${esc(m.user_name)}${m.note ? ' · ' + esc(m.note) : ''}</div>`).join('') || '<span class="muted">Keine</span>'}</div>`;
   };
   $('#sf')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const v = formVals($('#sf'));
-    try { await api.post('/api/admin/stock', { article_id: Number(v.article_id), qty: Number(v.qty), kind: v.kind, note: v.note }); toast('Gebucht', 'ok'); $('#sf [name=qty]').value = ''; load(); } catch (er) { toast(er.message, 'error'); }
+    const [aid, vid] = String(v.article_id).split(':');
+    try { await api.post('/api/admin/stock', { article_id: Number(aid), variant_id: vid ? Number(vid) : null, qty: Number(v.qty), kind: v.kind, note: v.note }); toast('Gebucht', 'ok'); $('#sf [name=qty]').value = ''; load(); } catch (er) { toast(er.message, 'error'); }
   });
   $('#f').addEventListener('submit', (e) => { e.preventDefault(); load(); });
   await load();
@@ -774,16 +871,16 @@ VIEWS.verwaltung = async (el) => {
       { k: 'price', l: 'Preis (€)', ph: '3,80' }, { k: 'vat', l: 'MwSt-Satz', type: 'select', opts: [[19, '19 %'], [7, '7 %'], [0, '0 %']] },
       { k: 'plu', l: 'Artikelnummer (optional)', type: 'number' }, { k: 'sort', l: 'Sortierung', type: 'number', def: 0 },
       { k: 'track_stock', l: 'Lagerartikel (Soll-Ist)', type: 'check' }, { k: 'active', l: 'Aktiv', type: 'check', def: 1 }];
-    const save = (id) => async (v) => {
-      const price = parseEuro(v.price);
-      if (price == null || Number.isNaN(price)) throw new Error('Ungültiger Preis');
-      const b = { ...v, price, category_id: Number(v.category_id), vat: Number(v.vat), plu: v.plu || null, track_stock: !!v.track_stock, active: !!v.active };
-      if (id) await api.put(`/api/admin/articles/${id}`, b); else await api.post('/api/admin/articles', b);
-    };
+    void F;
+    const activeVariants = (aid) => (META.variants || []).filter((v) => v.article_id === aid && v.active);
     box.innerHTML = `<div class="table-wrap"><table class="data"><thead><tr><th>Nr.</th><th>Artikel</th><th>Kategorie</th><th class="num">Preis</th><th>MwSt</th><th>Lager</th><th>Status</th></tr></thead><tbody>
-      ${META.articles.map((a) => `<tr class="click" data-id="${a.id}"><td>${a.plu ?? ''}</td><td><b>${esc(a.name)}</b></td><td>${esc(catName(a.category_id))}</td><td class="num">${euro(a.price)}</td><td>${a.vat} %</td><td>${a.track_stock ? '✓' : ''}</td><td>${a.active ? '<span class="badge ok">aktiv</span>' : '<span class="badge">inaktiv</span>'}</td></tr>`).join('')}</tbody></table></div>`;
-    addBtn('+ Artikel', () => saveForm('Neuer Artikel', F, {}, save(null)));
-    if (can('manage')) $$('[data-id]', box).forEach((tr) => tr.addEventListener('click', () => { const a = META.articles.find((x) => x.id === Number(tr.dataset.id)); saveForm(`Artikel bearbeiten: ${a.name}`, F, { ...a, price: num(a.price) }, save(a.id)); }));
+      ${META.articles.map((a) => {
+    const vs = activeVariants(a.id);
+    return `<tr class="click" data-id="${a.id}"><td>${a.plu ?? ''}</td><td><b>${esc(a.name)}</b>${vs.length ? `<div class="small muted">${vs.map((v) => `${esc(v.name)} ${euro(v.price)}`).join(' · ')}</div>` : ''}</td>
+      <td>${esc(catName(a.category_id))}</td><td class="num">${vs.length ? 'ab ' : ''}${euro(a.price)}</td><td>${a.vat} %</td><td>${a.track_stock ? '✓' : ''}</td><td>${a.active ? '<span class="badge ok">aktiv</span>' : '<span class="badge">inaktiv</span>'}</td></tr>`;
+  }).join('')}</tbody></table></div>`;
+    addBtn('+ Artikel', () => articleForm(null, reload));
+    if (can('manage')) $$('[data-id]', box).forEach((tr) => tr.addEventListener('click', () => articleForm(META.articles.find((x) => x.id === Number(tr.dataset.id)), reload)));
   }
   if (tab === 'kategorien') {
     const F = [{ k: 'name', l: 'Name' }, { k: 'kind', l: 'Art', type: 'select', opts: [['speise', 'Speisen'], ['getraenk', 'Getränke'], ['sonstiges', 'Sonstiges']] },

@@ -46,11 +46,15 @@ Beim allerersten Start gibt es nur den Administrator: **Personalnummer 1, PIN 12
 
 1. **Anmelden** mit Personalnummer und PIN. Nach 5 Minuten ohne Bedienung automatische Abmeldung (einstellbar).
 2. **Tisch antippen** → Artikel antippen. Menge vorher über die Zifferntasten (z. B. `3`, dann *Cola*);
-   über *Art.-Nr.* per Artikelnummer.
+   über *Art.-Nr.* per Artikelnummer. Hat ein Artikel **Varianten** (z. B. Bacardi: Shot, Longdrink, Flasche),
+   erscheint danach die Auswahl der Variante mit Preis.
 3. **Position antippen** (blau markiert) für **+1**, **Storno** (Grund Pflicht; ab 20 € oder nach 10 Minuten
    Freigabe durch Schichtleitung/Admin), **Verschieben** (auf anderen Tisch), **Preis** (Grund + Freigabe).
 4. **Tischwechsel**, **Übernehmen** (Tisch eines Kollegen), **Bezahlen** (alles oder Auswahl, Zahlungsart,
    optional Rabatt) → **digitale Rechnung** (kein Bondrucker), PDF speicherbar.
+   **Mit EC zahlen:** Zahlungsart „EC-Karte“ wählen → „Mit EC zahlen“ → Sicherheitsabfrage **Ja / Nein**.
+   Bei „Ja“ werden alle gewählten Artikel storniert und mit dem Vermerk **„Mit EC bezahlt“** festgehalten
+   (getrennt von normalen Stornos, ohne Storno-Warnungen). Bei „Nein“ bleibt alles unverändert.
 5. **Rechnungen** (oben): heutige Rechnungen, ggf. **Tisch wiedereröffnen** (Freigabe nötig; Originalrechnung bleibt,
    es entsteht eine Stornorechnung).
 6. **☰ → Meine Schicht**: Schichtabrechnung ansehen und abschließen.
@@ -70,11 +74,11 @@ Auf dem Smartphone wechselt man oben zwischen **„Artikel“** und **„Bestell
 | **Warnungen** | Automatisch erkannte Auffälligkeiten (Hinweise, kein Beweis) – mit Notiz als „geprüft“ markierbar |
 | **Aktivitätsprotokoll** | Jede Aktion mit Zeit, Mitarbeiter, Tisch, Artikel, Vorher/Nachher; Filter und Export (CSV/PDF) |
 | **Artikel-Lebenslauf** | Komplette Geschichte eines Artikels vom ersten Tastendruck bis zur Rechnung |
-| **Rechnungen, Stornierungen, Verschiebungen, Preisänderungen** | Eigene Listen, durchsuchbar, exportierbar |
+| **Rechnungen, Stornierungen, Verschiebungen, Preisänderungen** | Eigene Listen, durchsuchbar, exportierbar. Unter Stornierungen gibt es den Reiter **„Mit EC bezahlt“** (EC-Zahlungen getrennt, mit Tagessumme) |
 | **Mitarbeiter** | Kennzahlen pro Tag/Woche/Monat inkl. Stornoquote |
 | **Umsatz & Abschlüsse** | Umsatz nach Zahlungsart/Kategorie/Uhrzeit/Artikel/MwSt, **Tagesabschluss**, Schichten |
-| **Soll-Ist (Lager)** | Warenentnahmen buchen und mit Verkäufen vergleichen |
-| **Verwaltung** | Artikel, Kategorien, Tische, Benutzer, Rechte, Einstellungen (jede Änderung protokolliert) |
+| **Soll-Ist (Lager)** | Warenentnahmen buchen und mit Verkäufen vergleichen; Varianten werden einzeln gezählt, per EC bezahlte Artikel als eigene Spalte |
+| **Verwaltung** | Artikel, Kategorien, Tische, Benutzer, Rechte, Einstellungen (jede Änderung protokolliert). Beim Anlegen eines Artikels: **„Hat dieser Artikel Varianten?“** → Ja → **„Wie viele Varianten?“** → je Variante Name und Preis |
 | **Manipulationsschutz** | Prüft die komplette Hash-Kette und die Schutzregeln der Datenbank |
 
 ## 6. Tagesabschluss und Löschen
@@ -127,6 +131,6 @@ npm test
 npm start
 ```
 
-`npm test` prüft mit 14 automatischen Tests u. a. den Ablauf aus Anforderung 13, Rechte, Freigaben, doppelte
+`npm test` prüft mit 17 automatischen Tests u. a. den Ablauf aus Anforderung 13, Rechte, Freigaben, EC-Zahlung, Varianten, das Update einer Datenbank der Vorversion, doppelte
 Übermittlung, Wiedereröffnung, Warnsystem, Export, das Löschen alter Abschlüsse und **gezielte Manipulationsversuche
 direkt an der Datenbank**. `npm start` stellt die App zum Ausprobieren am PC unter http://localhost:8080 bereit.

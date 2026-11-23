@@ -49,21 +49,59 @@ export function saveArticle(actor, id, b) {
   };
   if (!one('SELECT id FROM categories WHERE id=?', data.category_id)) fail(400, 'Kategorie existiert nicht');
   if (data.plu && one('SELECT id FROM articles WHERE plu=? AND id<>?', data.plu, id || 0)) fail(409, 'Artikelnummer bereits vergeben');
+  // Varianten (z. B. Bacardi: Shot, Longdrink, Flasche) – jede mit eigenem Preis.
+  // b.variants fehlt → Varianten bleiben unverändert; leere Liste → Artikel ohne Varianten.
+  let variants = null;
+  if (Array.isArray(b.variants)) {
+    if (b.variants.length > 10) fail(400, 'Höchstens 10 Varianten');
+    variants = b.variants.map((v, i) => ({
+      id: v.id ? int(v.id, 'Variante') : null,
+      name: str(v.name, `einen Namen für Variante ${i + 1}`, { max: 30 }),
+      price: int(v.price, `Preis für Variante ${i + 1}`, { min: 0, max: 10000000 }),
+      sort: i,
+    }));
+    const names = variants.map((v) => v.name.toLowerCase());
+    if (new Set(names).size !== names.length) fail(400, 'Variantennamen müssen unterschiedlich sein');
+    if (variants.length) data.price = Math.min(...variants.map((v) => v.price)); // „ab“-Preis zur Anzeige
+  }
+  const variantList = (aid) => all('SELECT id, name, price, active FROM article_variants WHERE article_id=? ORDER BY sort, id', aid).map(plain);
+  const saveVariants = (aid) => {
+    if (!variants) return;
+    const existing = variantList(aid);
+    for (const v of variants) {
+      if (v.id) {
+        if (!existing.some((e) => e.id === v.id)) fail(400, 'Variante gehört nicht zu diesem Artikel');
+        run('UPDATE article_variants SET name=?, price=?, sort=?, active=1 WHERE id=?', v.name, v.price, v.sort, v.id);
+      } else {
+        run('INSERT INTO article_variants(article_id,name,price,sort,active) VALUES(?,?,?,?,1)', aid, v.name, v.price, v.sort);
+      }
+    }
+    // Nicht mehr aufgeführte Varianten werden deaktiviert (nie gelöscht – sie stehen in alten Buchungen)
+    for (const e of existing) if (!variants.some((v) => v.id === e.id)) run('UPDATE article_variants SET active=0 WHERE id=?', e.id);
+  };
   return tx(() => {
     if (id) {
       const before = plain(one('SELECT * FROM articles WHERE id=?', int(id, 'Artikel')));
       if (!before) fail(404, 'Artikel nicht gefunden');
+      before.varianten = variantList(before.id);
       run('UPDATE articles SET name=?, category_id=?, price=?, vat=?, plu=?, track_stock=?, active=?, sort=? WHERE id=?',
         data.name, data.category_id, data.price, data.vat, data.plu, data.track_stock, data.active, data.sort, before.id);
+      saveVariants(before.id);
       const after = plain(one('SELECT * FROM articles WHERE id=?', before.id));
-      logAdmin(actor, before.price !== after.price ? 'ARTICLE_PRICE_CHANGED' : 'ARTICLE_UPDATED', 'artikel', before.id, before, after,
-        { article_name: after.name, unit_price: after.price, details: before.price !== after.price ? { alter_preis: before.price, neuer_preis: after.price } : {} });
+      after.varianten = variantList(before.id);
+      const priceChanged = before.price !== after.price || JSON.stringify(before.varianten.map((v) => [v.name, v.price, v.active]))
+        !== JSON.stringify(after.varianten.map((v) => [v.name, v.price, v.active]));
+      logAdmin(actor, priceChanged ? 'ARTICLE_PRICE_CHANGED' : 'ARTICLE_UPDATED', 'artikel', before.id, before, after,
+        { article_name: after.name, unit_price: after.price, details: priceChanged ? { alter_preis: before.price, neuer_preis: after.price } : {} });
       return { id: before.id };
     }
     const r = run('INSERT INTO articles(name,category_id,price,vat,plu,track_stock,active,sort) VALUES(?,?,?,?,?,?,?,?)',
       data.name, data.category_id, data.price, data.vat, data.plu, data.track_stock, data.active, data.sort);
     const nid = Number(r.lastInsertRowid);
-    logAdmin(actor, 'ARTICLE_CREATED', 'artikel', nid, null, plain(one('SELECT * FROM articles WHERE id=?', nid)), { article_name: data.name, unit_price: data.price });
+    saveVariants(nid);
+    const created = plain(one('SELECT * FROM articles WHERE id=?', nid));
+    created.varianten = variantList(nid);
+    logAdmin(actor, 'ARTICLE_CREATED', 'artikel', nid, null, created, { article_name: data.name, unit_price: data.price });
     return { id: nid };
   });
 }
@@ -199,12 +237,21 @@ export function addStock(actor, b) {
   if (!a) fail(404, 'Artikel nicht gefunden');
   const qty = int(b.qty, 'Menge', { min: 1, max: 100000 });
   const kind = b.kind === 'rueckgabe' ? 'rueckgabe' : 'entnahme';
+  // Artikel mit Varianten: Entnahme wird je Variante gebucht (jede Variante wird einzeln gezählt)
+  const vs = all('SELECT * FROM article_variants WHERE article_id=? ORDER BY sort, id', a.id);
+  let v = null;
+  if (vs.length) {
+    v = vs.find((x) => x.id === Number(b.variant_id));
+    if (!v) fail(400, 'Bitte die Variante wählen');
+  }
+  const name = v ? `${a.name} – ${v.name}` : a.name;
   return tx(() => {
     const ev = logEvent(actor, {
-      type: 'STOCK_MOVEMENT', article_name: a.name, qty: kind === 'entnahme' ? qty : -qty, reason: b.note || null,
-      after: { artikel: a.name, menge: qty, art: kind }, details: { article_id: a.id },
+      type: 'STOCK_MOVEMENT', article_name: name, qty: kind === 'entnahme' ? qty : -qty, reason: b.note || null,
+      after: { artikel: name, menge: qty, art: kind }, details: { article_id: a.id, variant_id: v?.id ?? null },
     });
-    run('INSERT INTO stock_movements(article_id,qty,kind,user_id,ts,note,audit_seq) VALUES(?,?,?,?,?,?,?)', a.id, qty, kind, actor.user.id, ev.ts, b.note || null, ev.seq);
+    run('INSERT INTO stock_movements(article_id,variant_id,qty,kind,user_id,ts,note,audit_seq) VALUES(?,?,?,?,?,?,?,?)',
+      a.id, v?.id ?? null, qty, kind, actor.user.id, ev.ts, b.note || null, ev.seq);
     if (!a.track_stock) run('UPDATE articles SET track_stock=1 WHERE id=?', a.id);
     return { ok: true };
   });
@@ -253,10 +300,11 @@ export function dayClose(actor) {
 function revenueRange(a, b) {
   const byMethod = all('SELECT payment_method AS method, COUNT(*) n, SUM(total) total FROM invoices WHERE closed_at>=? AND closed_at<? GROUP BY payment_method', a, b).map(plain);
   const total = byMethod.reduce((s, r) => s + r.total, 0);
-  const storno = plain(one('SELECT COUNT(*) n, COALESCE(SUM(total),0) v FROM cancellations WHERE cancelled_at>=? AND cancelled_at<?', a, b));
+  const storno = plain(one("SELECT COUNT(*) n, COALESCE(SUM(total),0) v FROM cancellations WHERE kind='storno' AND cancelled_at>=? AND cancelled_at<?", a, b));
+  const ec = plain(one("SELECT COUNT(DISTINCT audit_seq) n, COUNT(DISTINCT order_id) tische, COALESCE(SUM(total),0) v FROM cancellations WHERE kind='ec' AND cancelled_at>=? AND cancelled_at<?", a, b));
   const reversals = plain(one("SELECT COUNT(*) n, COALESCE(SUM(total),0) v FROM invoices WHERE kind='storno' AND closed_at>=? AND closed_at<?", a, b));
   const discounts = one("SELECT COALESCE(SUM(discount),0) v FROM invoices WHERE kind='rechnung' AND closed_at>=? AND closed_at<?", a, b).v;
-  return { total, byMethod, stornos: storno, stornorechnungen: reversals, rabatte: discounts };
+  return { total, byMethod, stornos: storno, ec_zahlungen: ec, stornorechnungen: reversals, rabatte: discounts };
 }
 /**
  * Löscht den ÄLTESTEN Tagesabschluss zusammen mit allen Einzelheiten seines Zeitraums

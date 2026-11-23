@@ -24,7 +24,7 @@ export function evaluate(ev) {
   const d = ev.details_json ? JSON.parse(ev.details_json) : {};
 
   if (ev.type === 'ITEM_CANCELLED') {
-    const c = one('SELECT COUNT(*) n, COALESCE(SUM(total),0) v FROM cancellations WHERE cancelled_by=? AND cancelled_at>=?', uid, from);
+    const c = one("SELECT COUNT(*) n, COALESCE(SUM(total),0) v FROM cancellations WHERE kind='storno' AND cancelled_by=? AND cancelled_at>=?", uid, from);
     const lim = s.alert_storno_count_day;
     if (lim > 0 && c.n >= lim) {
       const level = Math.floor(c.n / lim);
@@ -33,14 +33,14 @@ export function evaluate(ev) {
         message: `${who} hat heute bereits ${c.n} Stornierungen im Wert von ${euro(c.v)} vorgenommen.`, details: { anzahl: c.n, wert: c.v, tag: day } });
     }
     const entered = one("SELECT COALESCE(SUM(qty),0) n FROM audit_log WHERE user_id=? AND type IN ('ITEM_ADDED','ITEM_QTY_INCREASED') AND ts>=?", uid, from).n;
-    const cq = one('SELECT COALESCE(SUM(qty),0) n FROM cancellations WHERE cancelled_by=? AND cancelled_at>=?', uid, from).n;
+    const cq = one("SELECT COALESCE(SUM(qty),0) n FROM cancellations WHERE kind='storno' AND cancelled_by=? AND cancelled_at>=?", uid, from).n;
     if (entered >= 10 && cq * 100 / entered >= s.alert_storno_ratio_percent) {
       raise({ ...base, rule: 'storno_quote', severity: 'mittel', key: `storno_quote:${uid}:${day}`,
         title: `Hohe Stornoquote: ${who}`,
         message: `${who}: ${cq} von ${entered} eingegebenen Artikeln storniert (${Math.round(cq * 100 / entered)} %).`, details: { eingegeben: entered, storniert: cq } });
     }
     if (d.sekunden_nach_eingabe != null && d.sekunden_nach_eingabe <= s.alert_quick_storno_seconds) {
-      const q = one('SELECT COUNT(*) n FROM cancellations WHERE cancelled_by=? AND cancelled_at>=? AND seconds_after_entry<=?', uid, from, s.alert_quick_storno_seconds).n;
+      const q = one("SELECT COUNT(*) n FROM cancellations WHERE kind='storno' AND cancelled_by=? AND cancelled_at>=? AND seconds_after_entry<=?", uid, from, s.alert_quick_storno_seconds).n;
       if (q >= s.alert_quick_storno_count) {
         const level = Math.floor(q / s.alert_quick_storno_count);
         raise({ ...base, rule: 'sofortstorno', severity: level >= 2 ? 'hoch' : 'mittel', key: `sofortstorno:${uid}:${day}:${level}`,
@@ -59,7 +59,7 @@ export function evaluate(ev) {
   if (ev.type === 'TABLE_CLOSED') {
     const o = one('SELECT * FROM orders WHERE id=?', ev.order_id);
     const winFrom = new Date(Date.parse(ev.ts) - s.alert_storno_before_close_minutes * 60000).toISOString();
-    const late = one('SELECT COUNT(*) n, COALESCE(SUM(total),0) v FROM cancellations WHERE order_id=? AND cancelled_at>=?', ev.order_id, winFrom);
+    const late = one("SELECT COUNT(*) n, COALESCE(SUM(total),0) v FROM cancellations WHERE kind='storno' AND order_id=? AND cancelled_at>=?", ev.order_id, winFrom);
     if (late.n >= 2) {
       raise({ ...base, rule: 'storno_vor_abschluss', severity: 'mittel', key: `storno_vor_abschluss:${ev.order_id}:${ev.seq}`,
         title: `Stornos kurz vor Abschluss: Tisch ${ev.table_no}`,
@@ -68,7 +68,7 @@ export function evaluate(ev) {
     }
     if (late.n >= 1) {
       const n = one(`SELECT COUNT(*) n FROM audit_log a WHERE a.type='TABLE_CLOSED' AND a.user_id=? AND a.ts>=? AND EXISTS(
-          SELECT 1 FROM cancellations c WHERE c.order_id=a.order_id AND c.cancelled_at>=strftime('%Y-%m-%dT%H:%M:%fZ', a.ts, ?) AND c.cancelled_at<=a.ts)`,
+          SELECT 1 FROM cancellations c WHERE c.kind='storno' AND c.order_id=a.order_id AND c.cancelled_at>=strftime('%Y-%m-%dT%H:%M:%fZ', a.ts, ?) AND c.cancelled_at<=a.ts)`,
       uid, from, `-${s.alert_storno_before_close_minutes} minutes`).n;
       if (n >= 3) {
         raise({ ...base, rule: 'muster_storno_vor_abschluss', severity: 'hoch', key: `muster_svab:${uid}:${day}:${Math.floor(n / 3)}`,
@@ -76,7 +76,7 @@ export function evaluate(ev) {
           message: `${who} hat heute ${n} Tische abgeschlossen, bei denen kurz vorher storniert wurde.`, details: { tische: n } });
       }
     }
-    const st = one('SELECT COUNT(*) n, COALESCE(SUM(total),0) v FROM cancellations WHERE order_id=?', ev.order_id);
+    const st = one("SELECT COUNT(*) n, COALESCE(SUM(total),0) v FROM cancellations WHERE kind='storno' AND order_id=?", ev.order_id);
     const billed = one("SELECT COALESCE(SUM(total),0) v FROM invoices WHERE order_id=? AND kind='rechnung'", ev.order_id).v;
     const share = st.v + billed > 0 ? st.v * 100 / (st.v + billed) : 0;
     if (st.n >= s.alert_close_storno_count || (st.n > 0 && share >= s.alert_close_storno_share_percent)) {

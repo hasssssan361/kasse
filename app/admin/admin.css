@@ -232,3 +232,5 @@ table.cmp tr.chg td { font-weight: 700; }
 table.cmp tr.chg td:last-child { color: var(--accent); }
 table.cmp tr.chg { background: var(--accent-soft); }
 table.cmp dl.kv2 { display: grid; gap: 2px; margin: 0; }
+.ev.ec { background: var(--info-soft); }
+.tl.ec::before { background: var(--info); }

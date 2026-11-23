@@ -152,7 +152,7 @@ async function start() {
 
 async function loadBoot() {
   const b = await api.get('/api/pos/bootstrap');
-  S.cats = b.categories; S.arts = b.articles; S.tables = b.tables; S.users = b.users; S.settings = b.settings;
+  S.cats = b.categories; S.arts = b.articles; S.variants = b.variants || []; S.tables = b.tables; S.users = b.users; S.settings = b.settings;
   if (!S.cats.find((c) => c.id === S.cat)) S.cat = S.cats[0]?.id ?? null;
 }
 
@@ -260,9 +260,12 @@ function renderCatalog() {
   if (!$('#cats')) return;
   $('#cats').innerHTML = S.cats.map((c) => `<button class="cat ${c.id === S.cat ? 'on' : ''}" style="--c:${esc(c.color)}" data-c="${c.id}">${esc(c.name)}</button>`).join('');
   const cat = S.cats.find((c) => c.id === S.cat);
-  $('#arts').innerHTML = S.arts.filter((a) => a.category_id === S.cat).map((a) => `<button class="art" style="--c:${esc(cat?.color || '')}" data-a="${a.id}">
-      <span class="an">${esc(a.name)}</span><span class="row" style="justify-content:space-between"><span class="ap">${euro(a.price)}</span>${a.plu ? `<span class="plu">${a.plu}</span>` : ''}</span></button>`).join('')
-    || '<div class="empty">Keine Artikel in dieser Kategorie</div>';
+  $('#arts').innerHTML = S.arts.filter((a) => a.category_id === S.cat).map((a) => {
+    const vs = variantsOf(a.id);
+    return `<button class="art" style="--c:${esc(cat?.color || '')}" data-a="${a.id}">
+      <span class="an">${esc(a.name)}${vs.length ? `<span class="vc">${vs.length} Varianten</span>` : ''}</span>
+      <span class="row" style="justify-content:space-between"><span class="ap">${vs.length ? 'ab ' : ''}${euro(a.price)}</span>${a.plu ? `<span class="plu">${a.plu}</span>` : ''}</span></button>`;
+  }).join('') || '<div class="empty">Keine Artikel in dieser Kategorie</div>';
   $$('#cats [data-c]').forEach((b) => b.addEventListener('click', () => { S.cat = Number(b.dataset.c); renderCatalog(); }));
   $$('#arts [data-a]').forEach((b) => b.addEventListener('click', () => {
     const a = S.arts.find((x) => x.id === Number(b.dataset.a));
@@ -274,13 +277,30 @@ function renderCatalog() {
   }));
 }
 
-let adding = Promise.resolve();
+const variantsOf = (articleId) => (S.variants || []).filter((v) => v.article_id === articleId);
+
+// Artikel mit Varianten (z. B. Bacardi: Shot, Longdrink, Flasche): erst Variante wählen
 function addArticle(a, qty, raw) {
+  const vs = variantsOf(a.id);
+  if (!vs.length) return queueAdd(a, null, qty, raw);
+  const m = modal({
+    title: `${qty > 1 ? qty + ' × ' : ''}${a.name} – Variante wählen`,
+    body: `<div class="vpick">${vs.map((v) => `<button class="vbtn" data-v="${v.id}"><b>${esc(v.name)}</b><span>${euro(v.price)}</span></button>`).join('')}</div>`,
+    actions: [{ label: 'Abbrechen' }],
+  });
+  $$('[data-v]', m.body).forEach((b) => b.addEventListener('click', () => {
+    m.close('action');
+    queueAdd(a, vs.find((v) => v.id === Number(b.dataset.v)), qty, raw);
+  }));
+}
+
+let adding = Promise.resolve();
+function queueAdd(a, v, qty, raw) {
   // Reihenfolge garantieren, auch bei schnellem Tippen
   adding = adding.then(async () => {
     try {
-      await api.post('/api/pos/items', { table_id: S.tableId, article_id: a.id, qty, raw_input: raw });
-      toast(`${qty} × ${a.name}`, 'ok', 1200);
+      await api.post('/api/pos/items', { table_id: S.tableId, article_id: a.id, variant_id: v?.id ?? null, qty, raw_input: raw });
+      toast(`${qty} × ${a.name}${v ? ` (${v.name})` : ''}`, 'ok', 1200);
       await loadOrder(true);
     } catch (e) { toast(e.message, 'error', 6000); }
   });
@@ -308,7 +328,11 @@ function renderTicket() {
       <span class="t">${euro(i.open_qty * i.unit_price)}</span></div>`;
   };
   const hist = [];
-  for (const c of d.cancellations) hist.push(`<div class="hl st"><span>${c.qty}× ${esc(c.article_name)} storniert – ${esc(c.reason)} (${esc(c.cancelled_by_name)}, ${fmtTime(c.cancelled_at)})</span><span>${euro(c.total)}</span></div>`);
+  for (const c of d.cancellations) {
+    hist.push(c.kind === 'ec'
+      ? `<div class="hl"><span>${c.qty}× ${esc(c.article_name)} – mit EC bezahlt (${esc(c.cancelled_by_name)}, ${fmtTime(c.cancelled_at)})</span><span>${euro(c.total)}</span></div>`
+      : `<div class="hl st"><span>${c.qty}× ${esc(c.article_name)} storniert – ${esc(c.reason)} (${esc(c.cancelled_by_name)}, ${fmtTime(c.cancelled_at)})</span><span>${euro(c.total)}</span></div>`);
+  }
   for (const m of d.moves) {
     const out = m.from_order_id === o?.id;
     hist.push(`<div class="hl"><span>${m.qty}× ${esc(m.article_name)} ${out ? `→ Tisch ${m.to_table_no} verschoben` : `von Tisch ${m.from_table_no} hierher verschoben`} (${esc(m.moved_by_name)}, ${fmtTime(m.moved_at)})</span><span>${euro(m.qty * m.unit_price)}</span></div>`);
@@ -548,7 +572,8 @@ const ACT = {
       <div class="section"><div class="lbl">Zahlungsart</div><div class="chips" id="pm">${S.settings.payment_methods.map((m) => `<button class="chip" data-m="${esc(m)}">${esc(m)}</button>`).join('')}</div></div>
       <div class="section hidden" id="cash"><div class="lbl">Gegeben (€)</div><div class="row"><input type="text" inputmode="decimal" id="given" style="max-width:160px" placeholder="optional">
         <span class="chips" id="quick"></span></div><div id="change" class="small" style="margin-top:6px"></div></div>
-      <div class="section"><label class="row" style="font-weight:700"><input type="checkbox" id="dOn"> Rabatt gewähren</label>
+      <div class="section hidden notice info" id="ecinfo">Bei <b>EC-Zahlung</b> werden die Artikel storniert und mit dem Vermerk „Mit EC bezahlt“ festgehalten.</div>
+      <div class="section" id="dsec"><label class="row" style="font-weight:700"><input type="checkbox" id="dOn"> Rabatt gewähren</label>
         <div id="dBox" class="hidden" style="margin-top:8px"><div class="row"><span class="chips"><button class="chip on" data-dt="percent">%</button><button class="chip" data-dt="amount">€</button></span>
           <input type="text" inputmode="decimal" id="dVal" style="max-width:120px" placeholder="Wert"><input type="text" id="dReason" class="grow" maxlength="200" placeholder="Grund (Pflicht)"></div></div></div>
       <div class="sumrow"><span>Zu zahlen</span><span id="due"></span></div></div>`);
@@ -573,8 +598,14 @@ const ACT = {
     $('#pm', body).addEventListener('click', (e) => {
       const b = e.target.closest('[data-m]'); if (!b) return;
       method = b.dataset.m;
+      const isEc = method === S.settings.ec_method_name;
       $$('#pm .chip', body).forEach((x) => x.classList.toggle('on', x === b));
       $('#cash', body).classList.toggle('hidden', method !== 'Bar');
+      $('#ecinfo', body).classList.toggle('hidden', !isEc);
+      $('#dsec', body).classList.toggle('hidden', isEc);
+      if (isEc && disc.on) { disc.on = false; $('#dOn', body).checked = false; $('#dBox', body).classList.add('hidden'); calc(); }
+      const okBtn = $('.modal-foot .ok', body.closest('.modal'));
+      if (okBtn) okBtn.textContent = isEc ? 'Mit EC zahlen' : 'Zahlung abschließen';
     });
     $('#quick', body).addEventListener('click', (e) => { const b = e.target.closest('[data-g]'); if (b) { $('#given', body).value = (Number(b.dataset.g) / 100).toFixed(2).replace('.', ','); calc(); } });
     $('#given', body).addEventListener('input', calc);
@@ -590,6 +621,20 @@ const ACT = {
           const c = calc();
           if (!c.lines.length) throw new Error('Keine Positionen gewählt');
           if (!method) throw new Error('Bitte Zahlungsart wählen');
+          if (method === S.settings.ec_method_name) {
+            // EC: Sicherheitsabfrage, dann alle gewählten Artikel stornieren (Vermerk „Mit EC bezahlt“)
+            const n = c.lines.reduce((s, l) => s + l.qty, 0);
+            const ok = await yesNo('Mit EC zahlen?', `Sind Sie sicher? ${n} Artikel (${euro(c.sub)}) werden storniert und im Admin-Bereich mit dem Vermerk „Mit EC bezahlt“ festgehalten.`);
+            if (!ok) return false;
+            const allSel = c.lines.length === open.length && c.lines.every((l) => l.qty === l.item.open_qty);
+            const r = await api.post(`/api/pos/orders/${S.data.order.id}/ec-pay`, { items: allSel ? null : c.lines.map((l) => ({ item_id: l.item_id, qty: l.qty })) });
+            done = true;
+            S.sel.clear();
+            refreshTables();
+            toast(`Mit EC bezahlt: ${euro(r.total)} – Artikel storniert und vermerkt`, 'ok', 4000);
+            if (r.closed) go('tables'); else await loadOrder();
+            return true;
+          }
           if (method === 'Bar' && c.g && c.g < c.due) throw new Error('Gegebener Betrag reicht nicht');
           let discount = null;
           if (disc.on && c.d > 0) {
@@ -615,6 +660,17 @@ const ACT = {
     });
   },
 };
+
+// Sicherheitsabfrage mit „Ja“ / „Nein“
+function yesNo(title, text) {
+  return new Promise((resolve) => {
+    modal({
+      title, body: `<p style="margin:0;font-size:16px">${esc(text)}</p>`,
+      actions: [{ label: 'Nein', onClick: () => resolve(false) }, { label: 'Ja', kind: 'ok', onClick: () => resolve(true) }],
+      onClose: (r) => { if (r === 'cancel') resolve(false); },
+    });
+  });
+}
 
 // ---- Rechnungen ------------------------------------------------------------------
 async function showInvoice(id, note) {
@@ -700,6 +756,7 @@ async function shiftDialog() {
       <tr><td>Rechnungen / Stornorechnungen</td><td class="num">${p.rechnungen} / ${p.stornorechnungen}</td></tr>
       <tr><td>Artikel eingegeben</td><td class="num">${p.artikel_eingegeben}</td></tr>
       <tr><td>Stornos</td><td class="num">${p.stornos} (${euro(p.storno_wert)})</td></tr>
+      <tr><td>Mit EC bezahlt (storniert)</td><td class="num">${p.ec_tische ?? 0} Tische (${euro(p.ec_wert)})</td></tr>
       <tr><td>Rabatte</td><td class="num">${euro(p.rabatte)}</td></tr></tbody></table>
       ${p.offene_tische.length ? `<div class="notice" style="margin-top:10px">Noch offene Tische: ${p.offene_tische.join(', ')}</div>` : ''}`,
     actions: [{ label: 'Schließen' }, {

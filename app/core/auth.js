@@ -37,6 +37,8 @@ export const DEFAULT_SETTINGS = {
   move_requires_reason: 0,
   auto_logout_minutes: 5,
   payment_methods: ['Bar', 'EC-Karte', 'Kreditkarte', 'Gutschein', 'Sonstige'],
+  // Bei dieser Zahlungsart werden die Artikel storniert (Wunsch des Betriebs) – getrennt geführt
+  ec_method_name: 'EC-Karte',
   alert_storno_count_day: 5,
   alert_storno_ratio_percent: 15,
   alert_quick_storno_seconds: 60,
