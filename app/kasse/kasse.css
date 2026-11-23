@@ -41,7 +41,11 @@ main.view { overflow: hidden; min-height: 0; }
 /* Bestellansicht */
 .order-view { display: grid; grid-template-columns: minmax(0, 1fr) minmax(330px, 420px); height: 100%; min-height: 0; }
 .catalog { display: grid; grid-template-rows: auto 1fr auto; min-height: 0; border-right: 1px solid var(--border); }
-.cats { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px; border-bottom: 1px solid var(--border); }
+.catbar { border-bottom: 1px solid var(--border); }
+.asearch { display: flex; gap: 6px; padding: 10px 10px 0; }
+.asearch input { flex: 1; min-width: 0; }
+.asearch input::-webkit-search-cancel-button { display: none; }
+.cats { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px; }
 .cat { flex: none; min-height: 46px; padding: 8px 16px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface-2); font-weight: 700; cursor: pointer; border-bottom: 4px solid var(--c, var(--border)); }
 .cat.on { background: var(--c, var(--accent)); color: #fff; border-color: var(--c); }
 .agrid { overflow: auto; padding: 10px; display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); grid-auto-rows: 92px; gap: 8px; align-content: start; }
@@ -57,7 +61,8 @@ main.view { overflow: hidden; min-height: 0; }
 .padbar .d { width: 46px; min-height: 44px; font-size: 18px; font-weight: 800; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); cursor: pointer; }
 
 .ticket { display: grid; grid-template-rows: auto 1fr auto auto; min-height: 0; background: var(--surface); }
-.ticket-head { padding: 12px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+.ticket-head { padding: 12px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ticket-head .gname { background: var(--accent-soft); color: var(--accent); font-weight: 800; padding: 4px 10px; border-radius: 999px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ticket-head .tno { font-size: 26px; font-weight: 800; }
 .lines { overflow: auto; padding: 6px; }
 .line { display: grid; grid-template-columns: 44px 1fr auto; gap: 8px; align-items: center; padding: 10px 10px; border-radius: 10px; cursor: pointer; border: 2px solid transparent; }

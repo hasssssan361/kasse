@@ -1,9 +1,9 @@
 // Kassen-Oberfläche. Wichtig: Diese Oberfläche protokolliert NICHTS selbst – jede Aktion geht an den
 // Rechenkern im Gerät, der Änderung und Protokolleintrag gemeinsam speichert. Ohne dessen Bestätigung
 // wird nichts als gebucht angezeigt.
-import { $, $$, esc, euro, fmtTime, fmtDT, h, Api, toast, modal, confirmDialog, debounce, parseEuro, uuid, registerOffline, APP_VERSION } from '../shared/core.js';
+import { $, $$, esc, euro, fmtTime, fmtDT, h, Api, toast, modal, confirmDialog, debounce, parseEuro, uuid, registerOffline, APP_VERSION, licenseGate } from '../shared/core.js';
 import { invoiceHtml } from '../shared/invoice.js';
-import { planSvg } from '../shared/plan.js';
+import { planSvg, spots } from '../shared/plan.js';
 
 registerOffline();
 
@@ -211,15 +211,15 @@ function renderTables() {
   const v = $('#view');
   const mineCount = S.tables.filter((t) => t.waiter_id === S.me.id).length;
   const cls = (t) => (!t.order_id ? 'free' : t.waiter_id === S.me.id ? 'mine' : 'other');
-  const tile = (t) => `<button class="ttile ${cls(t)}" data-t="${t.id}"><span class="no">${t.number}</span><span class="nm">${esc(t.name || t.seats + ' Plätze')}</span>
+  const tile = (t) => `<button class="ttile ${cls(t)}" data-t="${t.id}"><span class="no">${t.number}</span><span class="nm">${t.guest_name ? `<b>${esc(t.guest_name)}</b>` : esc(t.name || t.seats + ' Plätze')}</span>
         ${t.order_id ? `<span class="meta">${esc(t.waiter_name)} · seit ${fmtTime(t.opened_at, false)}${t.reopen_count ? ' · <b>wiedereröffnet</b>' : ''}</span>
         <span class="sum">${euro(t.open_total)}</span>` : '<span class="sum">frei</span>'}</button>`;
   const inArea = S.tables.filter((t) => t.area === S.area);
   let body;
   if (usePlan) {
     const byNo = new Map(S.tables.map((t) => [t.number, t]));
-    const planned = new Set(pa.elements.flatMap((e) => (e.type === 'table' ? [e.number] : e.type === 'counter' ? Array.from({ length: e.seat_count || 0 }, (_, i) => e.seat_start + i) : [])));
-    const status = (n) => { const t = byNo.get(n); return !t ? { cls: 'none', sub: '' } : { cls: cls(t), sub: t.order_id ? euro(t.open_total) : '' }; };
+    const planned = new Set(pa.elements.flatMap((e) => spots(e).map((x) => x.number)));
+    const status = (n) => { const t = byNo.get(n); return !t ? { cls: 'none', sub: '' } : { cls: cls(t), sub: t.order_id ? euro(t.open_total) : '', name: t.order_id ? t.guest_name : null }; };
     const rest = inArea.filter((t) => !planned.has(t.number));
     body = `<div class="plan-wrap"><div id="kplan">${planSvg(pa, { status, crop: true })}</div></div>
       ${rest.length ? `<h3 class="small muted" style="margin:14px 0 8px">Weitere Tische (nicht im Plan)</h3><div class="tgrid">${rest.map(tile).join('')}</div>` : ''}`;
@@ -264,7 +264,7 @@ async function loadOrder(keepSel) {
 
 function renderOrderShell() {
   $('#view').innerHTML = `<div class="order-view" data-pane="${S.pane}">
-    <section class="catalog"><div class="cats" id="cats"></div><div class="agrid" id="arts"></div>
+    <section class="catalog"><div class="catbar"><div class="asearch"><input type="search" id="aq" placeholder="Artikel suchen …" autocomplete="off" enterkeyhint="search"><button class="btn sm" id="aqx" aria-label="Suche leeren" style="display:none">✕</button></div><div class="cats" id="cats"></div></div><div class="agrid" id="arts"></div>
       <div class="padbar"><span class="qty-display" id="qd">Menge 1</span>
         ${[1, 2, 3, 4, 5, 6, 7, 8, 9, 0].map((d) => `<button class="d" data-d="${d}">${d}</button>`).join('')}
         <button class="btn sm" id="pclr">C</button><button class="btn sm" id="plu" title="Artikel über Artikelnummer">Art.-Nr.</button></div></section>
@@ -281,7 +281,22 @@ function renderOrderShell() {
     showBuf();
     addArticle(a, 1, raw);
   });
+  // Artikelsuche: über alle Kategorien, Groß-/Kleinschreibung und Umlaute egal, auch Artikelnummer
+  const aq = $('#aq');
+  aq.value = S.q || '';
+  aq.addEventListener('input', () => { S.q = aq.value; renderCatalog(); });
+  $('#aqx').addEventListener('click', () => { S.q = ''; aq.value = ''; renderCatalog(); aq.focus(); });
   renderCatalog();
+}
+
+const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ß/g, 'ss');
+function searchArticles(q) {
+  const words = norm(q).split(/\s+/).filter(Boolean);
+  if (!words.length) return null;
+  return S.arts.filter((a) => {
+    const hay = norm(a.name + ' ' + (a.plu || '') + ' ' + variantsOf(a.id).map((v) => v.name).join(' '));
+    return words.every((w) => hay.includes(w));
+  });
 }
 
 function showBuf() {
@@ -294,14 +309,17 @@ function showBuf() {
 function renderCatalog() {
   if (!$('#cats')) return;
   $('#cats').innerHTML = S.cats.map((c) => `<button class="cat ${c.id === S.cat ? 'on' : ''}" style="--c:${esc(c.color)}" data-c="${c.id}">${esc(c.name)}</button>`).join('');
-  const cat = S.cats.find((c) => c.id === S.cat);
-  $('#arts').innerHTML = S.arts.filter((a) => a.category_id === S.cat).map((a) => {
+  const found = searchArticles(S.q);
+  $('#aqx').style.display = S.q ? '' : 'none';
+  if (found) $$('#cats .cat').forEach((b) => b.classList.remove('on'));
+  const colorOf = (a) => S.cats.find((c) => c.id === a.category_id)?.color || '';
+  $('#arts').innerHTML = (found || S.arts.filter((a) => a.category_id === S.cat)).map((a) => {
     const vs = variantsOf(a.id);
-    return `<button class="art" style="--c:${esc(cat?.color || '')}" data-a="${a.id}">
+    return `<button class="art" style="--c:${esc(colorOf(a))}" data-a="${a.id}">
       <span class="an">${esc(a.name)}${vs.length ? `<span class="vc">${vs.length} Varianten</span>` : ''}</span>
       <span class="row" style="justify-content:space-between"><span class="ap">${vs.length ? 'ab ' : ''}${euro(a.price)}</span>${a.plu ? `<span class="plu">${a.plu}</span>` : ''}</span></button>`;
-  }).join('') || '<div class="empty">Keine Artikel in dieser Kategorie</div>';
-  $$('#cats [data-c]').forEach((b) => b.addEventListener('click', () => { S.cat = Number(b.dataset.c); renderCatalog(); }));
+  }).join('') || `<div class="empty">${found ? `Kein Artikel gefunden für „${esc(S.q)}“` : 'Keine Artikel in dieser Kategorie'}</div>`;
+  $$('#cats [data-c]').forEach((b) => b.addEventListener('click', () => { S.cat = Number(b.dataset.c); S.q = ''; $('#aq').value = ''; renderCatalog(); }));
   $$('#arts [data-a]').forEach((b) => b.addEventListener('click', () => {
     const a = S.arts.find((x) => x.id === Number(b.dataset.a));
     const qty = S.buf ? Math.max(1, Math.min(99, Number(S.buf))) : 1;
@@ -341,6 +359,28 @@ function queueAdd(a, v, qty, raw) {
   });
 }
 
+// Gästename (z. B. Stammgast) für die aktuelle Belegung – wird protokolliert, endet mit dem Abschluss des Tisches
+function guestNameDialog(t, o) {
+  const body = h(`<div><label class="field">Name der Gäste<input id="gn" maxlength="40" autocomplete="off" placeholder="z. B. Familie Yilmaz, Stammtisch Kevin"></label>
+    <p class="small muted" style="margin-top:8px">Erscheint am Tisch und im Plan, bis der Tisch abgeschlossen ist.${o ? '' : ' Der Tisch wird dafür eröffnet.'}</p></div>`);
+  $('#gn', body).value = o?.guest_name || '';
+  const save = async (name) => {
+    await api.post(`/api/pos/tables/${t.id}/guest`, { name });
+    toast(name ? `Name „${name}“ gespeichert` : 'Name entfernt', 'ok', 1500);
+    await loadOrder(true);
+    refreshTables();
+  };
+  const actions = [{ label: 'Abbrechen' }];
+  if (o?.guest_name) actions.push({ label: 'Name entfernen', kind: 'danger', onClick: () => save('') });
+  actions.push({ label: 'Speichern', kind: 'primary', onClick: () => {
+    const v = $('#gn', body).value.trim();
+    if (!v) { toast('Bitte einen Namen eingeben', 'error'); return false; }
+    return save(v);
+  } });
+  modal({ title: `Name für ${t.name || 'Tisch ' + t.number}`, body, actions });
+  $('#gn', body).addEventListener('keydown', (e) => { if (e.key === 'Enter') $$('.modal-foot .btn.primary').at(-1)?.click(); });
+}
+
 function renderTicket() {
   const d = S.data;
   const t = d.table;
@@ -349,8 +389,11 @@ function renderTicket() {
   const openItems = d.items.filter((i) => i.open_qty > 0);
   if (sw[1]) sw[1].textContent = `Bestellung (${openItems.reduce((s, i) => s + i.open_qty, 0)})`;
   $('#thead').innerHTML = `<button class="btn sm" id="back">←</button><span class="tno">${t.name ? `${esc(t.name)} <small class="muted">Nr. ${t.number}</small>` : `Tisch ${t.number}`}</span>
-    <div class="grow small muted">${o ? `${esc(o.waiter_name)} · seit ${fmtTime(o.opened_at, false)}${o.reopen_count ? ` · <span class="badge warn">${o.reopen_count}× wiedereröffnet</span>` : ''}` : 'frei'}</div>`;
+    ${o?.guest_name ? `<span class="gname" title="Gästename">${esc(o.guest_name)}</span>` : ''}
+    <div class="grow small muted">${o ? `${esc(o.waiter_name)} · seit ${fmtTime(o.opened_at, false)}${o.reopen_count ? ` · <span class="badge warn">${o.reopen_count}× wiedereröffnet</span>` : ''}` : 'frei'}</div>
+    <button class="btn sm" id="gbtn" title="Namen für die Gäste an diesem Tisch vergeben">${o?.guest_name ? '✎ Name' : '+ Name'}</button>`;
   $('#back').addEventListener('click', () => go('tables'));
+  $('#gbtn').addEventListener('click', () => guestNameDialog(t, o));
   const lineHtml = (i) => {
     const sub = [];
     if (i.origin_kind === 'move') { const m = d.moves.find((x) => x.target_item_id === i.id); sub.push(`von Tisch ${m ? m.from_table_no : '?'}`); }
@@ -821,4 +864,5 @@ function pinDialog() {
 }
 
 // ---- Los geht's -------------------------------------------------------------------
-if (api.token) start(); else showLogin();
+// Erst Lizenz prüfen (Freischaltung pro Gerät), dann Anmeldung
+licenseGate(api).then(() => { if (api.token) start(); else showLogin(); });

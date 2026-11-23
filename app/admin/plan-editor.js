@@ -2,7 +2,7 @@
 // Elemente per Finger/Maus verschieben, am blauen Anfasser in der Größe ändern, Eigenschaften unten bearbeiten.
 // Gespeichert wird erst mit „Plan speichern“ – dann legt die Kasse fehlende Tische automatisch an (protokolliert).
 import { $, $$, esc, h, toast, modal, confirmDialog } from '../shared/core.js';
-import { planSvg, spots, NEW_AREA } from '../shared/plan.js';
+import { planSvg, spots, NEW_AREA, SIDES, counterSeats, seatList } from '../shared/plan.js';
 
 const SNAP = 10;
 const snap = (v) => Math.round(v / SNAP) * SNAP;
@@ -13,6 +13,7 @@ export function planEditor(box, { META, api, canEdit, onSaved }) {
   const plan = structuredClone(META.plan?.areas?.length ? META.plan : { areas: [NEW_AREA()] });
   let ai = 0;
   let sel = null;
+  let selSeat = null; // ausgewählter Tresenplatz { side, i }
   let dirty = false;
   let zoom = 1;
   const area = () => plan.areas[ai];
@@ -23,12 +24,21 @@ export function planEditor(box, { META, api, canEdit, onSaved }) {
   // Nummern: im Plan belegte Nummern; vorhandene Tische mit freier Nummer werden beim Speichern übernommen
   const usedNums = (skip) => new Set(plan.areas.flatMap((a) => a.elements.filter((e) => e !== skip).flatMap((e) => spots(e).map((s) => s.number))));
   const nextNumber = () => { const u = usedNums(); let n = 1; while (u.has(n)) n++; return n; };
-  const nextRun = (count, from = 101) => { const u = usedNums(); let n = from; while ([...Array(Math.max(count, 1)).keys()].some((i) => u.has(n + i))) n++; return n; };
+  // k nächste freie Nummern (gemeinsame fortlaufende Nummerierung von Tischen, Tresenplätzen und Automaten)
+  const nextNumbers = (k) => { const u = usedNums(); const out = []; let n = 1; while (out.length < k) { if (!u.has(n)) out.push(n); n++; } return out; };
+
+  // Ältere Pläne angleichen: Tresen → Platzlisten je Seite; Automaten ohne Nummer bekommen eine
+  let upgraded = false;
+  for (const a of plan.areas) for (const e of a.elements) {
+    if (e.type === 'counter' && !e.seats) { e.seats = counterSeats(e); delete e.seat_count; delete e.seat_start; delete e.seat_side; upgraded = true; }
+  }
+  for (const a of plan.areas) for (const e of a.elements) if (e.type === 'slot' && !e.number) { e.number = nextNumber(); upgraded = true; }
 
   // Freien Platz für ein neues Element suchen (Raster), sonst Mitte
   function place(w, hh) {
     const A = area();
-    const hit = (x, y) => A.elements.some((e) => e.type !== 'zone' && x < e.x + e.w + 20 && x + w + 20 > e.x && y < e.y + e.h + 40 && y + hh + 40 > e.y);
+    // Abstand 50 rundum (Tresenplätze sitzen bis zu 41 Einheiten außerhalb des Tresens)
+    const hit = (x, y) => A.elements.some((e) => e.type !== 'zone' && x < e.x + e.w + 50 && x + w + 50 > e.x && y < e.y + e.h + 50 && y + hh + 50 > e.y);
     for (let y = 40; y + hh <= A.h - 20; y += 40) for (let x = 40; x + w <= A.w - 20; x += 40) if (!hit(x, y)) return { x, y };
     return { x: snap((A.w - w) / 2), y: snap((A.h - hh) / 2) };
   }
@@ -39,9 +49,9 @@ export function planEditor(box, { META, api, canEdit, onSaved }) {
     }[type];
     const e = { id: uid(), type, shape, w: D[0], h: D[1], label: '' };
     if (type === 'table') Object.assign(e, { number: nextNumber(), seats: D[2] });
-    if (type === 'counter') Object.assign(e, { seat_count: 6, seat_start: nextRun(6), seat_side: 'unten', label: 'Tresen' });
+    if (type === 'counter') Object.assign(e, { seats: { unten: nextNumbers(6), rechts: [], oben: [], links: [] }, label: 'Tresen' });
     if (type === 'entrance') e.label = 'Eingang';
-    if (type === 'slot') e.label = 'Automat';
+    if (type === 'slot') Object.assign(e, { label: 'Automat', number: nextNumber() });
     if (type === 'zone') e.label = 'Terrasse';
     Object.assign(e, type === 'zone' ? { x: 20, y: snap(area().h - D[1] - 20) } : place(e.w, e.h));
     area().elements.push(e);
@@ -113,7 +123,7 @@ export function planEditor(box, { META, api, canEdit, onSaved }) {
   // ---- Zeichnen ----
   let svg = null;
   function draw(full) {
-    const html = planSvg(area(), { edit: canEdit, sel });
+    const html = planSvg(area(), { edit: canEdit, sel, seat: selSeat });
     if (full || !svg) {
       drawAreas();
       $('#pcv', box).innerHTML = html;
@@ -153,6 +163,9 @@ export function planEditor(box, { META, api, canEdit, onSaved }) {
       const id = hdl ? sel : g.dataset.id;
       const e = elOf(id);
       if (!e) return;
+      // Tresenplatz angetippt → diesen Platz bearbeiten (Ziehen verschiebt weiter den ganzen Tresen)
+      const seatEl = !hdl && ev.target.closest('.seat');
+      if (!hdl) selSeat = seatEl ? { side: seatEl.dataset.side, i: Number(seatEl.dataset.i) } : null;
       const node = hdl ? null : g;
       drag = { mode: hdl ? 'size' : 'move', id: ev.pointerId, eid: id, node, p0: toPlan(ev), o: { ...e }, moved: false, wasSel: id === sel };
       if (!hdl && id !== sel) {
@@ -199,7 +212,7 @@ export function planEditor(box, { META, api, canEdit, onSaved }) {
       if (!drag || ev.pointerId !== drag.id) return;
       const d = drag;
       drag = null;
-      if (d.mode === 'pan') { if (!d.moved && sel) { sel = null; draw(); drawProps(); } return; }
+      if (d.mode === 'pan') { if (!d.moved && sel) { sel = null; selSeat = null; draw(); drawProps(); } return; }
       if (d.moved) setDirty();
       draw(); drawProps(); // jetzt (Finger ist weg) sauber neu zeichnen: Auswahlrahmen, Anfasser, Eigenschaften
     };
@@ -224,13 +237,18 @@ export function planEditor(box, { META, api, canEdit, onSaved }) {
         ${shapes.length ? `<span class="row">${shapes.map((s) => `<button class="chip ${e.shape === s ? 'on' : ''}" data-shape="${s}" ${canEdit ? '' : 'disabled'}>${SHAPE_NAME[s]}</button>`).join('')}</span>` : ''}</div>
       <div class="fields">
         ${e.type === 'table' ? f('number', 'Tischnummer', 'number', 'min="1" max="9999"') + f('seats', 'Plätze', 'number', 'min="0" max="99"') + f('label', 'Bezeichnung (optional)', 'text', 'maxlength="30" placeholder="z. B. Fenster"') : ''}
-        ${e.type === 'counter' ? f('label', 'Bezeichnung', 'text', 'maxlength="30"') + f('seat_count', 'Gastplätze', 'number', 'min="0" max="40"') + f('seat_start', 'Nummer des 1. Platzes', 'number', 'min="1"')
-          + `<label class="field">Plätze an der Seite<select name="seat_side" ${canEdit ? '' : 'disabled'}>${['unten', 'oben', 'links', 'rechts'].map((s) => `<option ${e.seat_side === s ? 'selected' : ''}>${s}</option>`).join('')}</select></label>` : ''}
+        ${e.type === 'counter' ? f('label', 'Bezeichnung', 'text', 'maxlength="30"') + SIDES.map((sd) => `<label class="field">Plätze ${sd}<input name="cnt_${sd}" type="number" min="0" max="30" value="${counterSeats(e)[sd].length}" ${canEdit ? '' : 'disabled'}></label>`).join('') : ''}
+        ${e.type === 'slot' ? f('number', 'Platznummer (buchbar)', 'number', 'min="1" max="9999"') : ''}
         ${['entrance', 'slot', 'zone'].includes(e.type) ? f('label', 'Beschriftung', 'text', 'maxlength="30"') : ''}
         ${f('w', 'Breite', 'number', 'min="20" step="10"')}${e.shape === 'rect' ? f('h', 'Höhe', 'number', 'min="20" step="10"') : ''}
       </div>
-      ${e.type === 'counter' && e.seat_count ? `<p class="small muted" style="margin-top:8px">Die Gastplätze sind an der Kasse buchbar wie Tische: Nr. ${e.seat_start}–${e.seat_start + e.seat_count - 1} („${esc(e.label || 'Tresen')} 1“ …).</p>` : ''}
-      ${e.type === 'slot' ? '<p class="small muted" style="margin-top:8px">Spielautomaten dienen nur der Orientierung und sind nicht buchbar.</p>' : ''}
+      ${e.type === 'counter' ? (() => {
+        const seat = selSeat && counterSeats(e)[selSeat.side]?.[selSeat.i];
+        return `<p class="small muted" style="margin-top:8px">Jeder Gastplatz ist an der Kasse buchbar wie ein Tisch. Einen Platz im Plan antippen, um seine Nummer zu ändern.</p>
+        ${seat ? `<div class="fields" style="margin-top:8px"><label class="field">Nummer des ausgewählten Platzes (${selSeat.side})<input name="seatnum" type="number" min="1" max="9999" value="${seat}"></label></div>` : ''}
+        <div class="row" style="margin-top:8px"><span class="small">Alle Plätze fortlaufend nummerieren ab</span><input id="pren" type="number" min="1" max="9999" style="width:90px" value="${seatList(e)[0]?.number || nextNumber()}"><button class="btn sm" id="prenb">Nummerieren</button></div>`;
+      })() : ''}
+      ${e.type === 'slot' ? '<p class="small muted" style="margin-top:8px">An Automaten kann gebucht werden wie an einem Tisch (Nummer steht im Bildschirm).</p>' : ''}
       ${canEdit ? `<div class="row" style="margin-top:12px">
         ${e.shape === 'rect' ? '<button class="btn sm" id="prot">Drehen 90°</button>' : ''}
         <button class="btn sm" id="pdup">Duplizieren</button><button class="btn sm danger" id="pdel">Entfernen</button></div>` : ''}</div>`;
@@ -244,12 +262,23 @@ export function planEditor(box, { META, api, canEdit, onSaved }) {
         v = Math.max(20, Math.min(v, k === 'w' ? A.w : A.h));
         if (e.shape !== 'rect') e.w = e.h = Math.min(v, A.w, A.h); else e[k] = v;
         e.x = Math.min(e.x, A.w - e.w); e.y = Math.min(e.y, A.h - e.h);
-      } else if (k === 'number' || k === 'seat_start' || k === 'seat_count') {
-        const test = { ...e, [k]: v };
-        if (k === 'seat_count') test.seat_count = v = Math.max(0, Math.min(40, v));
-        const clash = spots(test).find((s) => usedNums(e).has(s.number));
-        if (v < (k === 'seat_count' ? 0 : 1) || clash) { toast(clash ? `Nummer ${clash.number} ist im Plan schon vergeben` : 'Ungültige Nummer', 'error'); return drawProps(); }
-        e[k] = v;
+      } else if (k === 'number') {
+        if (v < 1 || usedNums(e).has(v)) { toast(v < 1 ? 'Ungültige Nummer' : `Nummer ${v} ist im Plan schon vergeben`, 'error'); return drawProps(); }
+        e.number = v;
+      } else if (k.startsWith('cnt_')) {
+        const sd = k.slice(4);
+        const seats = counterSeats(e);
+        const want = Math.max(0, Math.min(30, v));
+        if (want > seats[sd].length) seats[sd].push(...nextNumbers(want - seats[sd].length));
+        else seats[sd] = seats[sd].slice(0, want);
+        e.seats = seats;
+        if (selSeat && !seats[selSeat.side]?.[selSeat.i]) selSeat = null;
+      } else if (k === 'seatnum') {
+        const seats = counterSeats(e);
+        const others = new Set([...usedNums(e), ...seatList(e).filter((x) => !(x.side === selSeat.side && x.i === selSeat.i)).map((x) => x.number)]);
+        if (v < 1 || others.has(v)) { toast(v < 1 ? 'Ungültige Nummer' : `Nummer ${v} ist im Plan schon vergeben`, 'error'); return drawProps(); }
+        seats[selSeat.side][selSeat.i] = v;
+        e.seats = seats;
       } else e[k] = v;
       setDirty(); draw(); drawProps();
     }));
@@ -259,20 +288,33 @@ export function planEditor(box, { META, api, canEdit, onSaved }) {
       else if (e.w === e.h) e.w = Math.min(snap(e.w * 1.5), A.w - e.x);
       setDirty(); draw(); drawProps();
     }));
+    $('#prenb', P)?.addEventListener('click', () => {
+      const start = Math.round(Number($('#pren', P).value));
+      const list = seatList(e);
+      const used = usedNums(e);
+      const nums = list.map((_, k) => start + k);
+      const clash = nums.find((n) => used.has(n));
+      if (!(start >= 1) || clash) return toast(clash ? `Nummer ${clash} ist im Plan schon vergeben` : 'Ungültige Nummer', 'error');
+      const seats = counterSeats(e);
+      list.forEach((x, k) => { seats[x.side][x.i] = nums[k]; });
+      e.seats = seats;
+      setDirty(); draw(); drawProps();
+    });
     $('#prot', P)?.addEventListener('click', () => {
       [e.w, e.h] = [Math.min(e.h, A.w), Math.min(e.w, A.h)];
-      if (e.type === 'counter') e.seat_side = { unten: 'links', links: 'oben', oben: 'rechts', rechts: 'unten' }[e.seat_side];
+      if (e.type === 'counter') { const s = counterSeats(e); e.seats = { links: s.unten, oben: s.links, rechts: s.oben, unten: s.rechts }; selSeat = null; }
       e.x = Math.min(e.x, A.w - e.w); e.y = Math.min(e.y, A.h - e.h);
       setDirty(); draw(); drawProps();
     });
     $('#pdup', P).addEventListener('click', () => {
       const c = { ...structuredClone(e), id: uid(), ...place(e.w, e.h) };
       if (c.type === 'table') c.number = nextNumber();
-      if (c.type === 'counter') c.seat_start = nextRun(c.seat_count, e.seat_start + e.seat_count);
+      if (c.type === 'slot') c.number = nextNumber();
+      if (c.type === 'counter') { const s = counterSeats(e); const fresh = nextNumbers(seatList(e).length); let k = 0; c.seats = Object.fromEntries(SIDES.map((sd) => [sd, s[sd].map(() => fresh[k++])])); }
       A.elements.push(c); sel = c.id; setDirty(); draw(); drawProps();
     });
     $('#pdel', P).addEventListener('click', () => {
-      A.elements = A.elements.filter((x) => x !== e); sel = null; setDirty(); draw(); drawProps();
+      A.elements = A.elements.filter((x) => x !== e); sel = null; selSeat = null; setDirty(); draw(); drawProps();
     });
   }
 
@@ -295,5 +337,9 @@ export function planEditor(box, { META, api, canEdit, onSaved }) {
   addEventListener('beforeunload', (ev) => { if (dirty && document.contains(box)) { ev.preventDefault(); ev.returnValue = ''; } });
   draw(true);
   if ($('#pcv', box).clientWidth < 600) setZoom(2); // Handy: größer starten, seitlich wischen
+  if (upgraded && canEdit) {
+    setDirty();
+    toast('Plan an die neue Version angepasst (Automaten haben Nummern bekommen) – bitte prüfen und „Plan speichern“', 'info', 9000);
+  }
   return { isDirty: () => dirty };
 }

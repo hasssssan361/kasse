@@ -256,11 +256,12 @@ export const EXPECTED_TRIGGER_COUNT = () => APPEND_ONLY.length * 2 + 2 + 4 + MAS
 // ---- Erweiterung bestehender Datenbanken (Updates auf Geräten mit vorhandenen Daten) ----
 // Spalten werden nur ergänzt, nie entfernt. Ändern sich Schutzregeln oder Spalten, werden die Trigger
 // einmalig neu angelegt (die Journal-Trigger müssen alle Spalten kennen).
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 const ADD_COLUMNS = [
   ['cancellations', 'kind', "TEXT NOT NULL DEFAULT 'storno'"], // 'storno' oder 'ec' (mit EC bezahlt)
   ['order_items', 'variant_id', 'INTEGER'],
   ['stock_movements', 'variant_id', 'INTEGER'],
+  ['orders', 'guest_name', 'TEXT'], // frei wählbarer Name für die Gäste am Tisch (z. B. Stammgast), ab Version 3.0
 ];
 function migrate(d) {
   for (const [t, c, def] of ADD_COLUMNS) {

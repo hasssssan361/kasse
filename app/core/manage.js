@@ -189,7 +189,15 @@ export function saveTable(actor, id, b) {
 // Tresenplatz im Plan ist ein buchbarer Tisch: Beim Speichern werden fehlende Tische angelegt und
 // Bereich/Name/Plätze angeglichen – alles über saveTable, also einzeln protokolliert.
 export const PLAN_TYPES = ['table', 'counter', 'entrance', 'slot', 'zone'];
-const SEAT_SIDES = ['unten', 'oben', 'links', 'rechts'];
+// Tresenplätze je Seite (Reihenfolge = Reihenfolge der Platznamen „Tresen 1, 2, …“)
+const SEAT_SIDES = ['unten', 'rechts', 'oben', 'links'];
+// Ältere Pläne (Version 2.3/2.4): seat_count/seat_start/seat_side → Platzlisten je Seite
+function counterSeats(el) {
+  if (el.seats && typeof el.seats === 'object') return Object.fromEntries(SEAT_SIDES.map((s) => [s, Array.isArray(el.seats[s]) ? el.seats[s] : []]));
+  const o = Object.fromEntries(SEAT_SIDES.map((s) => [s, []]));
+  o[SEAT_SIDES.includes(el.seat_side) ? el.seat_side : 'unten'] = Array.from({ length: el.seat_count || 0 }, (_, i) => (el.seat_start || 101) + i);
+  return o;
+}
 export const getPlan = () => {
   const r = one("SELECT value FROM settings WHERE key='floor_plan'");
   return r ? JSON.parse(r.value) : { areas: [] };
@@ -197,7 +205,11 @@ export const getPlan = () => {
 // Alle buchbaren Plätze eines Elements: [{ number, name, seats }]
 export function planSpots(el) {
   if (el.type === 'table') return [{ number: el.number, name: el.label || null, seats: el.seats }];
-  if (el.type === 'counter') return Array.from({ length: el.seat_count }, (_, i) => ({ number: el.seat_start + i, name: `${el.label || 'Tresen'} ${i + 1}`, seats: 1 }));
+  if (el.type === 'counter') {
+    const s = counterSeats(el);
+    return SEAT_SIDES.flatMap((side) => s[side]).map((number, k) => ({ number, name: `${el.label || 'Tresen'} ${k + 1}`, seats: 1 }));
+  }
+  if (el.type === 'slot' && el.number) return [{ number: el.number, name: el.label || 'Automat', seats: 1 }];
   return [];
 }
 function normPlan(p) {
@@ -229,10 +241,10 @@ function normPlan(p) {
       }
       if (e.type === 'counter') {
         o.shape = 'rect';
-        o.seat_count = int(e.seat_count ?? 0, 'Gastplätze', { min: 0, max: 40 });
-        o.seat_start = int(e.seat_start ?? 101, 'erste Platznummer', { min: 1, max: 9999 - o.seat_count });
-        o.seat_side = SEAT_SIDES.includes(e.seat_side) ? e.seat_side : 'unten';
+        const cs = counterSeats(e);
+        o.seats = Object.fromEntries(SEAT_SIDES.map((sd) => [sd, cs[sd].slice(0, 30).map((n) => int(n, 'Platznummer am Tresen', { min: 1, max: 9999 }))]));
       }
+      if (e.type === 'slot' && e.number != null && e.number !== '') o.number = int(e.number, 'Nummer des Automaten', { min: 1, max: 9999 });
       if (e.type === 'zone' && !o.label) o.label = 'Terrasse';
       for (const s of planSpots(o)) {
         if (nums.has(s.number)) fail(400, `Nummer ${s.number} ist im Plan doppelt vergeben (${nums.get(s.number)} und ${s.name || 'Tisch ' + s.number})`);

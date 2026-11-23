@@ -9,6 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { init, dispatch } from '../app/core/api.js';
 import { nodeDriver } from './node-driver.js';
+import { activateDevice, makeCode } from './license-helper.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -22,6 +23,11 @@ test('Datenbank der Vorversion wird beim Update erweitert, ohne Datenverlust', a
     const r = await dispatch({ method, path: u.pathname, query: Object.fromEntries(u.searchParams), body: body || {}, token });
     return { s: r.status, j: r.body };
   };
+  // Nach dem Update ist das Gerät gesperrt, bis es freigeschaltet ist – die Daten bleiben dabei unangetastet
+  const locked = await call('POST', '/api/login', { personal_nr: 1, pin: '123456', kind: 'admin' });
+  assert.equal(locked.s, 403);
+  assert.equal(locked.j.unlicensed, true);
+  await activateDevice(call);
   const admin = (await call('POST', '/api/login', { personal_nr: 1, pin: '123456', kind: 'admin' })).j.token;
   const anna = (await call('POST', '/api/login', { personal_nr: 10, pin: '1010', kind: 'kasse' })).j.token;
   assert.ok(admin && anna, 'Anmeldung mit vorhandenen Benutzern');

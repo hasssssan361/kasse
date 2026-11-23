@@ -8,6 +8,7 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { init, dispatch } from '../app/core/api.js';
 import { nodeDriver } from './node-driver.js';
+import { activateDevice, makeCode } from './license-helper.mjs';
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kasse-test-'));
 const T = {};
@@ -29,6 +30,7 @@ const tab = (n) => boot.tables.find((t) => t.number === n);
 
 before(async () => {
   init(nodeDriver(path.join(dir, 'kasse.db')), { demo: true });
+  await activateDevice(call);
   T.anna = await login(10, '1010');
   T.ben = await login(11, '1111');
   T.sabine = await login(2, '2222');
@@ -288,6 +290,29 @@ test('Varianten: Artikel mit Shot/Longdrink/Flasche, Auswahl Pflicht, Lager je V
   assert.equal(JSON.parse(ev.before_json).varianten.length, 3);
 });
 
+test('Lizenz: Code nur für dieses Gerät gültig, fremde/manipulierte/abgelaufene Codes abgelehnt', async () => {
+  const st = (await call('GET', '/api/license')).j;
+  assert.equal(st.licensed, true);
+  assert.match(st.device_id, /^[A-Z2-9]{4}(-[A-Z2-9]{4}){3}$/);
+  assert.equal(st.business, 'Testbetrieb');
+  // Code eines anderen Geräts
+  const other = await call('POST', '/api/license', { code: await makeCode('AAAA-BBBB-CCCC-DDDD') });
+  assert.equal(other.s, 400);
+  assert.match(other.j.error, /anderen Gerät/);
+  // Manipuliert: anderer Betriebsname bei gleicher Signatur
+  const good = await makeCode(st.device_id, 'Echter Betrieb');
+  const [p, s] = good.split('.');
+  const forged = Buffer.from(JSON.stringify({ ...JSON.parse(Buffer.from(p, 'base64url').toString()), b: 'Fremder' })).toString('base64url') + '.' + s;
+  assert.match((await call('POST', '/api/license', { code: forged })).j.error, /ungültig/);
+  assert.match((await call('POST', '/api/license', { code: 'quatsch' })).j.error, /unvollständig/);
+  // Abgelaufen
+  assert.match((await call('POST', '/api/license', { code: await makeCode(st.device_id, 'X', '2020-01-01') })).j.error, /abgelaufen/);
+  // Gerät bleibt freigeschaltet, Freischaltung protokolliert
+  assert.equal((await call('GET', '/api/license')).j.licensed, true);
+  const ev = (await call('GET', '/api/admin/audit?type=LICENSE_ACTIVATED', null, T.admin)).j.rows;
+  assert.equal(ev.length, 1);
+});
+
 test('Tischplan: Tische und Tresenplätze werden buchbar angelegt, Nummern eindeutig, protokolliert', async () => {
   const plan = { areas: [
     { name: 'Gastraum', w: 1200, h: 800, elements: [
@@ -325,6 +350,52 @@ test('Tischplan: Tische und Tresenplätze werden buchbar angelegt, Nummern einde
   assert.equal(ev.length, 1);
   assert.equal((await call('PUT', '/api/admin/plan', r.j.plan, T.admin)).j.tische_neu, 0);
   assert.equal((await call('GET', '/api/admin/audit?type=PLAN_UPDATED', null, T.admin)).j.rows.length, 1, 'unveränderter Plan erzeugt keinen Eintrag');
+});
+
+test('Tischplan 3.0: Tresenplätze an mehreren Seiten mit freien Nummern, Automaten buchbar', async () => {
+  const base = (await call('GET', '/api/admin/meta', null, T.admin)).j.plan;
+  const plan = structuredClone(base);
+  plan.areas[0].elements.push(
+    { id: 'k2', type: 'counter', x: 300, y: 500, w: 300, h: 60, label: 'Theke', seats: { unten: [61, 62], links: [60], rechts: [64], oben: [] } },
+    { id: 's1', type: 'slot', shape: 'square', x: 900, y: 500, w: 80, h: 80, number: 70, label: 'Automat' },
+  );
+  // gleiche Nummer an Tresen und Automat → abgelehnt
+  const dup = structuredClone(plan);
+  dup.areas[0].elements.at(-1).number = 64;
+  assert.match((await call('PUT', '/api/admin/plan', dup, T.admin)).j.error, /64.*doppelt/);
+  const r = await call('PUT', '/api/admin/plan', plan, T.admin);
+  assert.equal(r.s, 200, JSON.stringify(r.j));
+  assert.equal(r.j.tische_neu, 5);
+  const b = (await call('GET', '/api/pos/bootstrap', null, T.anna)).j;
+  const nm = (n) => b.tables.find((t) => t.number === n)?.name;
+  // Reihenfolge der Platznamen: unten, rechts, oben, links
+  assert.deepEqual([61, 62, 64, 60].map(nm), ['Theke 1', 'Theke 2', 'Theke 3', 'Theke 4']);
+  assert.equal(nm(70), 'Automat');
+  const slot = b.tables.find((t) => t.number === 70);
+  const plain = boot.articles.find((a) => !boot.variants?.some((v) => v.article_id === a.id));
+  assert.equal((await call('POST', '/api/pos/items', { table_id: slot.id, article_id: plain.id, qty: 2 }, T.anna)).s, 200, 'am Automaten buchbar');
+  const k2 = r.j.plan.areas[0].elements.find((e) => e.id === 'k2');
+  assert.deepEqual(k2.seats, { unten: [61, 62], rechts: [64], oben: [], links: [60] });
+});
+
+test('Gästename: Tisch benennen (auch freier Tisch), protokolliert, endet mit dem Abschluss', async () => {
+  const t = (await call('GET', '/api/pos/tables', null, T.ben)).j.find((x) => !x.order_id && x.number < 60);
+  const r = await call('POST', `/api/pos/tables/${t.id}/guest`, { name: '  Stammtisch   Kevin ' }, T.ben);
+  assert.equal(r.s, 200, JSON.stringify(r.j));
+  assert.equal(r.j.guest_name, 'Stammtisch Kevin');
+  let ov = (await call('GET', '/api/pos/tables', null, T.ben)).j.find((x) => x.id === t.id);
+  assert.equal(ov.guest_name, 'Stammtisch Kevin');
+  assert.ok(ov.order_id, 'freier Tisch wurde dafür eröffnet');
+  await call('POST', `/api/pos/tables/${t.id}/guest`, { name: 'Familie Yilmaz' }, T.ben);
+  const ev = (await call('GET', '/api/admin/audit?type=GUEST_NAME_SET', null, T.admin)).j.rows;
+  assert.equal(ev.length, 2);
+  assert.equal(JSON.parse(ev[0].before_json).gastname, 'Stammtisch Kevin');
+  assert.equal(JSON.parse(ev[0].after_json).gastname, 'Familie Yilmaz');
+  // Tisch (leer) schließen → nächste Belegung ohne Namen
+  assert.equal((await call('POST', `/api/pos/orders/${ov.order_id}/close-empty`, {}, T.ben)).s, 200);
+  await call('POST', '/api/pos/items', { table_id: t.id, article_id: boot.articles.find((a) => !boot.variants?.some((v) => v.article_id === a.id)).id, qty: 1 }, T.ben);
+  ov = (await call('GET', '/api/pos/tables', null, T.ben)).j.find((x) => x.id === t.id);
+  assert.equal(ov.guest_name, null);
 });
 
 test('Getränkekarte übernehmen: Vorschau, Anlage mit Varianten, nichts doppelt, protokolliert', async () => {

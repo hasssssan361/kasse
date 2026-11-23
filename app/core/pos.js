@@ -38,6 +38,21 @@ function ensureOrder(actor, table, via) {
   return { ...one('SELECT * FROM orders WHERE id=?', id), table_no: table.number };
 }
 
+// Frei wählbarer Name für die Gäste am Tisch (z. B. Stammgast „Familie Yilmaz“).
+// Gehört zur aktuellen Belegung: Ist der Tisch frei, wird er dafür eröffnet. Jede Änderung wird protokolliert.
+export function setGuestName(actor, tableId, b) {
+  const table = getTable(tableId);
+  const name = String(b?.name ?? '').trim().replace(/\s+/g, ' ').slice(0, 40) || null;
+  return tx(() => {
+    const o = ensureOrder(actor, table, 'gastname');
+    const before = o.guest_name || null;
+    if (before === name) return { ok: true, guest_name: name, order_id: o.id };
+    run('UPDATE orders SET guest_name=? WHERE id=?', name, o.id);
+    logEvent(actor, { type: 'GUEST_NAME_SET', table_no: table.number, order_id: o.id, before: { gastname: before }, after: { gastname: name } });
+    return { ok: true, guest_name: name, order_id: o.id };
+  });
+}
+
 function insertItem(f) {
   const id = (one('SELECT MAX(id) m FROM order_items')?.m || 0) + 1;
   run(`INSERT INTO order_items(id,order_id,lifecycle_id,origin_item_id,origin_kind,article_id,variant_id,article_name,category_kind,vat,list_price,unit_price,qty,created_by,created_at,raw_input)
@@ -50,7 +65,7 @@ function insertItem(f) {
 // ---- Ansichten -------------------------------------------------------------
 export function tablesOverview() {
   return all(`SELECT t.id, t.number, t.name, t.area, t.seats,
-      o.id AS order_id, o.opened_at, o.waiter_id, u.name AS waiter_name, o.reopen_count,
+      o.id AS order_id, o.opened_at, o.waiter_id, u.name AS waiter_name, o.reopen_count, o.guest_name,
       (SELECT COALESCE(SUM((i.qty-i.cancelled_qty-i.moved_qty-i.billed_qty)*i.unit_price),0) FROM order_items i WHERE i.order_id=o.id) AS open_total,
       (SELECT COALESCE(SUM(i.qty-i.cancelled_qty-i.moved_qty-i.billed_qty),0) FROM order_items i WHERE i.order_id=o.id) AS open_count,
       (SELECT MAX(a.ts) FROM audit_log a WHERE a.order_id=o.id) AS last_activity

@@ -49,7 +49,7 @@ function getWorker() {
 
 // Versionsnummer der App – wird auf dem Anmeldebildschirm und im Admin-Bereich angezeigt,
 // damit man nach einem Update sieht, dass die neue Version läuft. Bei jeder Veröffentlichung erhöhen.
-export const APP_VERSION = '2.4';
+export const APP_VERSION = '3.0';
 
 // Offline-Betrieb: Service Worker registrieren (liegt im Hauptordner der App)
 export function registerOffline() {
@@ -83,6 +83,10 @@ export class Api {
       this.onUnauthorized?.();
       throw Object.assign(new Error('Bitte erneut anmelden'), { status: 401 });
     }
+    if (res.status === 403 && res.body?.unlicensed) {
+      // Lizenz fehlt oder ist abgelaufen → Freischalt-Bildschirm, danach neu laden
+      showLicenseScreen(this, { licensed: false, device_id: res.body.device_id, error: res.body.error }).then(() => location.reload());
+    }
     if (res.status >= 400) throw Object.assign(new Error(res.body?.error || `Fehler ${res.status}`), { status: res.status, data: res.body });
     return res;
   }
@@ -93,8 +97,8 @@ export class Api {
   get(p) { return this.call('GET', p); }
   post(p, b, o) { return this.call('POST', p, b || {}, o); }
   put(p, b) { return this.call('PUT', p, b || {}); }
-  async download(path, fallbackName) {
-    const res = await this.raw('GET', path);
+  async download(path, fallbackName, body = null) {
+    const res = await this.raw(body ? 'POST' : 'GET', path, body);
     if (!res.file) throw new Error('Keine Datei erhalten');
     const blob = new Blob([res.file.data], { type: res.file.contentType });
     const a = document.createElement('a');
@@ -113,6 +117,63 @@ export class Api {
     this.onConnection(true);
   }
   closeStream() { if (this.handler) eventHandlers.delete(this.handler); this.handler = null; }
+}
+
+// ---- Lizenz / Freischaltung --------------------------------------------------
+// Vor der Anmeldung: Ist dieses Gerät freigeschaltet? Wenn nicht, Freischalt-Bildschirm zeigen.
+// Ein Freischaltcode kann auch per Link kommen: …/kasse/#lizenz=CODE
+export async function licenseGate(api) {
+  const fromLink = (location.hash.match(/[#&]lizenz=([^&]+)/) || [])[1];
+  if (fromLink) history.replaceState(null, '', location.pathname + location.search);
+  const res = await api.raw('GET', '/api/license').catch((e) => ({ body: { licensed: false, error: e.message } }));
+  const st = res.body || {};
+  if (st.licensed && !fromLink) return st;
+  return showLicenseScreen(api, st, fromLink ? decodeURIComponent(fromLink) : '');
+}
+
+let licenseScreen = null;
+export function showLicenseScreen(api, st, prefill = '') {
+  if (licenseScreen) return licenseScreen;
+  licenseScreen = new Promise((resolve) => {
+    const el = h(`<div class="lic-screen"><div class="lic-card">
+      <h1>Gerät freischalten</h1>
+      <p class="muted">Diese Kasse wird für jedes Gerät einzeln freigeschaltet. Schicken Sie die Gerätekennung an Ihren Anbieter –
+        Sie erhalten dafür einen Freischaltcode. Ihre Daten bleiben dabei unverändert.</p>
+      <div class="lic-id-label small muted">Gerätekennung dieses Geräts</div>
+      <div class="lic-id mono" id="lid"></div>
+      <div class="row" style="margin:8px 0 18px"><button class="btn sm" id="lcopy">Kopieren</button><button class="btn sm" id="lshare">Senden …</button></div>
+      <label class="field">Freischaltcode<textarea id="lcode" rows="4" placeholder="Freischaltcode hier einfügen" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea></label>
+      <div class="lic-err" id="lerr"></div>
+      <button class="btn primary" id="lgo" style="width:100%;margin-top:10px">Freischalten</button>
+    </div></div>`);
+    $('#lid', el).textContent = st.device_id || '…';
+    $('#lcode', el).value = prefill;
+    const err = (m) => { $('#lerr', el).textContent = m || ''; };
+    err(st.licensed ? '' : st.error && !/noch nicht freigeschaltet/.test(st.error) ? st.error : '');
+    const idText = () => `Gerätekennung meiner Kasse: ${st.device_id}`;
+    $('#lcopy', el).addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(st.device_id); toast('Gerätekennung kopiert', 'ok'); } catch { toast('Bitte die Kennung abschreiben', 'error'); }
+    });
+    $('#lshare', el).addEventListener('click', async () => {
+      if (navigator.share) { try { await navigator.share({ text: idText() }); } catch {} } else location.href = `mailto:?subject=${encodeURIComponent('Freischaltung Kasse')}&body=${encodeURIComponent(idText())}`;
+    });
+    const go = async () => {
+      const code = $('#lcode', el).value.trim();
+      if (!code) return err('Bitte den Freischaltcode einfügen.');
+      $('#lgo', el).disabled = true;
+      try {
+        const r = await api.raw('POST', '/api/license', { code });
+        toast(`Freigeschaltet für ${r.body.business || 'diesen Betrieb'}`, 'ok', 5000);
+        el.remove();
+        licenseScreen = null;
+        resolve(r.body);
+      } catch (e) { err(e.message); } finally { $('#lgo', el).disabled = false; }
+    };
+    $('#lgo', el).addEventListener('click', go);
+    document.body.append(el);
+    if (prefill) go();
+  });
+  return licenseScreen;
 }
 
 // ---- Toasts & Modale ---------------------------------------------------------

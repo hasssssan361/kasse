@@ -78,7 +78,7 @@ Auf dem Smartphone wechselt man oben zwischen **„Artikel“** und **„Bestell
 | **Mitarbeiter** | Kennzahlen pro Tag/Woche/Monat inkl. Stornoquote |
 | **Umsatz & Abschlüsse** | Umsatz nach Zahlungsart/Kategorie/Uhrzeit/Artikel/MwSt, **Tagesabschluss**, Schichten |
 | **Soll-Ist (Lager)** | Warenentnahmen buchen und mit Verkäufen vergleichen; Varianten werden einzeln gezählt, per EC bezahlte Artikel als eigene Spalte |
-| **Verwaltung** | Artikel, Kategorien, **Tischplan**, Tische, Benutzer, Rechte, Einstellungen (jede Änderung protokolliert). Beim Anlegen eines Artikels: **„Hat dieser Artikel Varianten?“** → Ja → **„Wie viele Varianten?“** → je Variante Name und Preis |
+| **Verwaltung** | Artikel, Kategorien, **Tischplan**, Tische, Benutzer, Rechte, Einstellungen, **Gerät & Übertragung** (Lizenz, Stammdaten exportieren/einlesen) (jede Änderung protokolliert). Beim Anlegen eines Artikels: **„Hat dieser Artikel Varianten?“** → Ja → **„Wie viele Varianten?“** → je Variante Name und Preis |
 | **Manipulationsschutz** | Prüft die komplette Hash-Kette und die Schutzregeln der Datenbank |
 
 ## 6. Tagesabschluss und Löschen
@@ -129,6 +129,42 @@ Steht dort noch die alte Version (oder gar keine Versionsnummer): Schritte 2–4
 
 **Tipp:** Updates am besten außerhalb der Öffnungszeiten einspielen und vorher offene Tische abrechnen.
 Nötig ist das nicht – offene Tische bleiben auch beim Update erhalten.
+
+### Neu in Version 3.0 – Freischaltung pro Gerät und Stammdaten-Übertragung
+**Wichtig beim Update auf 3.0:** Danach zeigt jedes Gerät einmalig **„Gerät freischalten“** mit einer Gerätekennung.
+Die Kasse ist bis zur Freischaltung gesperrt; **alle Daten bleiben erhalten**.
+
+- **Freischaltung (für Betriebe):** Gerätekennung an den Anbieter schicken („Kopieren“ oder „Senden …“). Den
+  erhaltenen Freischaltcode einfügen und „Freischalten“ tippen. Der Code gilt nur für dieses eine Gerät.
+  Jedes weitere Gerät braucht einen eigenen Code. Löscht man die App-Daten oder setzt das Gerät zurück, entsteht
+  eine neue Kennung, und das Gerät muss neu freigeschaltet werden.
+- **Freischaltung (für den Anbieter):** mit dem Freischalt-Werkzeug im Ordner `kassen-lizenz` (nur auf dem PC des
+  Anbieters, niemals hochladen; siehe LIESMICH.txt dort). Optional mit „Gültig bis“ (z. B. Abo). Nach Ablauf sperrt
+  die Kasse, bis ein neuer Code eingegeben wird.
+- **Stammdaten übertragen:** Admin-Bereich → Verwaltung → **„Gerät & Übertragung“**.
+  1. Auf dem eingerichteten Gerät ein Übertragungs-Passwort vergeben → „Stammdaten exportieren“. Die Datei landet
+     unter „Downloads“.
+  2. Die Datei z. B. per WhatsApp, E-Mail oder USB auf das andere Gerät bringen. Das Passwort getrennt mitteilen.
+  3. Auf dem anderen Gerät: Datei auswählen → Passwort → „Datei prüfen …“ → Vorschau → „1:1 übernehmen“.
+
+  Übertragen werden Kategorien, Artikel mit Varianten, Tische, Tischplan, Mitarbeiter mit PIN, Rollenrechte und
+  Einstellungen. Was in der Datei fehlt, wird auf dem Zielgerät **deaktiviert, nie gelöscht**. Belegte Tische und
+  das eigene Admin-Konto bleiben aktiv. Buchungen, Rechnungen und das Protokoll bleiben auf jedem Gerät für sich,
+  jedes Gerät arbeitet weiter eigenständig. Die Datei ist verschlüsselt, weil sie die PINs enthält.
+- **Artikelsuche an der Kasse:** Im geöffneten Tisch oben „Artikel suchen …“ eintippen, z. B. „jager“ für
+  Jägermeister. Gesucht wird in allen Kategorien; Groß-/Kleinschreibung und Umlaute sind egal. Auch die
+  Artikelnummer und Variantennamen werden gefunden. Mit ✕ wird die Suche geleert.
+- **Tresen mit Plätzen an allen Seiten:** Im Tischplan beim Tresen „Plätze unten / rechts / oben / links“ einstellen.
+- **Nummern frei wählbar:** Tische, Tresenplätze und Automaten werden gemeinsam fortlaufend nummeriert. Neue Plätze
+  bekommen automatisch die nächste freie Nummer. Einen Tresenplatz im Plan antippen, um seine Nummer zu ändern,
+  oder „Alle Plätze fortlaufend nummerieren ab …“ nutzen. Jede Nummer darf nur einmal vorkommen.
+- **Automaten buchbar:** Spielautomaten haben jetzt eine Nummer (im „Bildschirm“) und können an der Kasse wie ein
+  Tisch geöffnet und bebucht werden. Bestehende Pläne: Die Automaten bekommen beim Öffnen des Tischplans
+  automatisch eine Nummer. Danach einmal **„Plan speichern“** tippen.
+- **Gästename am Tisch:** Im geöffneten Tisch oben **„+ Name“** tippen, z. B. „Familie Yilmaz“, und speichern.
+  Der Name erscheint im Tisch, im Plan, in der Tischliste und in der Live-Übersicht des Admin-Bereichs.
+  Er gilt für die aktuelle Belegung und ist nach dem Abschluss des Tisches weg. Ändern oder Entfernen über
+  „✎ Name“. Jede Änderung wird protokolliert.
 
 ### Neu in Version 2.4
 - **Tischplan auf dem Touchscreen:** Objekte lassen sich mit dem Finger in einem Zug greifen, verschieben und in der

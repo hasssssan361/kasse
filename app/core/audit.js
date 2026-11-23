@@ -6,7 +6,7 @@ import { evaluateAll } from './alerts.js';
 
 export const EVENT_CATEGORY = {
   LOGIN: 'anmeldung', LOGIN_FAILED: 'anmeldung', LOGOUT: 'anmeldung', SESSION_EXPIRED: 'anmeldung',
-  TABLE_OPENED: 'tisch', TABLE_TAKEOVER: 'tisch', ORDER_CLOSED_EMPTY: 'abschluss',
+  TABLE_OPENED: 'tisch', TABLE_TAKEOVER: 'tisch', GUEST_NAME_SET: 'tisch', ORDER_CLOSED_EMPTY: 'abschluss',
   ITEM_ADDED: 'artikel', ITEM_QTY_INCREASED: 'artikel',
   ITEM_CANCELLED: 'storno', DIALOG_ABORTED: 'eingabe',
   ITEM_PRICE_CHANGED: 'preis', ARTICLE_PRICE_CHANGED: 'preis',

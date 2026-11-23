@@ -10,6 +10,8 @@ import * as adm from './manage.js';
 import { logEvent, verifyIntegrity, lastAuditHash, createAnchor } from './audit.js';
 import { toCsv, toPdf, pdfTable } from './export.js';
 import { ensureBaseData, loadDemoData } from './seed.js';
+import * as lic from './license.js';
+import * as xfer from './transfer.js';
 export { subscribe } from './events.js';
 
 const file = (data, contentType, filename) => ({ __file: true, data, contentType, filename });
@@ -27,7 +29,7 @@ const TYPE_LABEL = {
   TABLE_CREATED: 'Tisch angelegt', TABLE_UPDATED: 'Tisch geändert', USER_CREATED: 'Benutzer angelegt', USER_UPDATED: 'Benutzer geändert',
   PIN_CHANGED: 'PIN geändert', ROLE_UPDATED: 'Rechte geändert', SETTINGS_UPDATED: 'Einstellungen geändert', ALERT_ACKNOWLEDGED: 'Warnung geprüft',
   EXPORT_CREATED: 'Export erstellt', INTEGRITY_CHECK: 'Integritätsprüfung', BACKUP_CREATED: 'Sicherung erstellt', ANCHOR_CREATED: 'Sicherungsanker',
-  SYSTEM_START: 'App gestartet', DEMO_DATA_CREATED: 'Beispieldaten angelegt', ARTICLES_IMPORTED: 'Artikelliste übernommen', PLAN_UPDATED: 'Tischplan geändert', CLOSING_DELETED: 'Tagesabschluss gelöscht',
+  SYSTEM_START: 'App gestartet', DEMO_DATA_CREATED: 'Beispieldaten angelegt', ARTICLES_IMPORTED: 'Artikelliste übernommen', PLAN_UPDATED: 'Tischplan geändert', GUEST_NAME_SET: 'Gästename am Tisch', LICENSE_ACTIVATED: 'Gerät freigeschaltet', MASTER_IMPORTED: 'Stammdaten übernommen', MASTER_EXPORTED: 'Stammdaten exportiert', CLOSING_DELETED: 'Tagesabschluss gelöscht',
 };
 export { TYPE_LABEL };
 
@@ -40,6 +42,9 @@ const r = (method, pattern, perm, handler) => {
 };
 
 // Anmeldung
+// Lizenz (ohne Anmeldung erreichbar – alles andere erst nach Freischaltung)
+r('GET', '/api/license', null, async () => lic.publicStatus(await lic.licenseStatus()));
+r('POST', '/api/license', null, (_a, _p, _q, b) => lic.activate(b.code));
 r('POST', '/api/login', null, (_a, _p, _q, b) => auth.login(b));
 r('POST', '/api/logout', 'any', (a, _p, _q, b) => { auth.logout(a, b.reason); return { ok: true }; });
 r('GET', '/api/me', 'any', (a) => ({ user: a.user, permissions: a.permissions, kind: a.session.kind, settings: publicSettings() }));
@@ -84,6 +89,7 @@ r('POST', '/api/pos/orders/:id/takeover', 'pos', (a, p, _q, b) => pos.takeover(a
 r('POST', '/api/pos/orders/:id/pay', 'pos', (a, p, _q, b) => pos.pay(a, p.id, b));
 r('POST', '/api/pos/orders/:id/ec-pay', 'pos', (a, p, _q, b) => pos.ecPay(a, p.id, b));
 r('POST', '/api/pos/orders/:id/close-empty', 'pos', (a, p) => pos.closeEmpty(a, p.id));
+r('POST', '/api/pos/tables/:id/guest', 'pos', (a, p, _q, b) => pos.setGuestName(a, p.id, b));
 r('POST', '/api/pos/ui-event', 'pos', (a, _p, _q, b) => pos.uiEvent(a, b));
 r('GET', '/api/pos/invoices', 'pos', (a, _p, q) => {
   const h = auth.getSettings().business_day_start_hour;
@@ -154,6 +160,13 @@ r('PUT', '/api/admin/users/:id', 'manage', (a, p, _q, b) => adm.saveUser(a, p.id
 r('PUT', '/api/admin/roles/:code', 'manage', (a, p, _q, b) => adm.saveRole(a, p.code, b));
 r('PUT', '/api/admin/settings', 'manage', (a, _p, _q, b) => adm.saveSettings(a, b));
 r('PUT', '/api/admin/plan', 'manage', (a, _p, _q, b) => adm.savePlan(a, b));
+// Stammdaten-Übertragung zwischen Geräten (verschlüsselte Datei)
+r('POST', '/api/admin/master-export', 'manage', async (a, _p, _q, b) => {
+  const pkg = await xfer.exportMaster(a, b.password);
+  const name = String(pkg.business || 'kasse').toLowerCase().replace(/[^a-z0-9äöüß]+/g, '-').replace(/^-|-$/g, '').slice(0, 30) || 'kasse';
+  return file(JSON.stringify(pkg), 'application/json', `stammdaten-${name}-${todayBerlin()}.json`);
+});
+r('POST', '/api/admin/master-import', 'manage', (a, _p, _q, b) => xfer.importMaster(a, b.package, b.password, { dryRun: !!b.dryRun }));
 
 // Export (CSV / PDF)
 r('GET', '/api/admin/export/:what', 'dashboard', (a, p, q) => exportData(a, p.what, q));
@@ -319,6 +332,7 @@ function invoicePdf(actor, id) {
 
 // ---- Start und Aufruf ---------------------------------------------------------------
 export function init(driver, { demo = false } = {}) {
+  lic.resetLicenseCache();
   openDb(driver);
   ensureBaseData({ demo });
   run('DELETE FROM idempotency WHERE created_at<?', new Date(Date.now() - 2 * 86400000).toISOString());
@@ -332,6 +346,10 @@ export async function dispatch({ method, path, query = {}, body = {}, token = nu
   try {
     const route = routes.find((x) => x.method === method && x.re.test(path));
     if (!route) return { status: 404, body: { error: 'Unbekannte Funktion' } };
+    if (!path.startsWith('/api/license')) {
+      const ls = await lic.licenseStatus();
+      if (!ls.licensed) return { status: 403, body: { error: ls.error || 'Dieses Gerät ist noch nicht freigeschaltet.', unlicensed: true, device_id: ls.device_id } };
+    }
     const m = route.re.exec(path);
     const params = Object.fromEntries(route.keys.map((k, i) => [k, decodeURIComponent(m[i + 1])]));
     let actor = null;

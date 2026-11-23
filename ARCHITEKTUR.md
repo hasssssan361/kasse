@@ -48,6 +48,31 @@ werden entfernt, über den Abschluss offene Tische behalten ihren Stand. Endpunk
 Hash, letzte Rechnungsnummer je Jahr, Journal-Position) wird in `purges` gespeichert – die Prüfung der verbleibenden
 Kette und die Rechnungsnummerierung setzen dort an. Die Löschung wird als `CLOSING_DELETED` protokolliert.
 
+## Lizenz (Freischaltung pro Gerät)
+
+`app/core/license.js`:
+- Gerätekennung: zufällig, 16 Zeichen, gespeichert in `meta.device_id`.
+- Freischaltcode: `base64url(JSON{v,d,b,t,e}).base64url(ECDSA-P256-SHA256-Signatur)`.
+  - `d` Gerätekennung, `b` Betrieb, `t` ausgestellt, `e` gültig bis oder `null`.
+- Die App enthält nur den öffentlichen Schlüssel.
+- Der geheime Schlüssel und das Freischalt-Werkzeug liegen ausschließlich beim Anbieter, außerhalb des Repos (`../kassen-lizenz/`).
+- `dispatch` beantwortet ohne gültige Lizenz nur `/api/license` (403 `unlicensed`), und die Oberfläche zeigt den Freischalt-Bildschirm (`licenseGate` in `shared/core.js`).
+- Freischaltung wird als `LICENSE_ACTIVATED` protokolliert.
+- Grenze: Die Prüfung läuft im Browser. Wer den Programmcode verändern kann, kann sie entfernen; sie schützt gegen normale Weitergabe, nicht gegen Entwickler.
+
+## Stammdaten-Übertragung
+
+`app/core/transfer.js`:
+- **Export:** Kategorien, Artikel mit Varianten, Tische, Tischplan, Rollenrechte, Mitarbeiter mit PIN-Hash und Einstellungen.
+  - Verschlüsselt mit AES-GCM; Schlüssel per PBKDF2-SHA256 (200 000 Iterationen) aus dem Übertragungs-Passwort.
+  - SHA-256-Prüfsumme.
+- **Import (1:1):** abgeglichen über diese Schlüssel: Kategorie- und Artikelname, Tischnummer, Personalnummer, Rollencode.
+  - Neues anlegen, Geändertes über die normalen Speicherfunktionen aktualisieren (protokolliert), Fehlendes deaktivieren.
+  - Die Vorschau läuft als echte Übernahme in einer Transaktion, die zurückgerollt wird.
+  - Belegte Tische und das eigene Admin-Konto bleiben aktiv.
+  - Ohne aktiven Administrator wird abgebrochen.
+- Buchungen, Rechnungen, Protokoll und Lizenz werden nie übertragen.
+
 ## Datenmodell
 
 | Bereich | Tabelle(n) |

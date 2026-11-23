@@ -1,8 +1,9 @@
 // Administrator-Dashboard: eigenständige Anwendung, eigene Anmeldung, nur lesender Zugriff auf das
 // Protokoll (es gibt keine Funktion zum Ändern oder Löschen von Protokolleinträgen).
-import { $, $$, esc, euro, num, fmtTime, fmtDT, fmtDate, todayStr, h, Api, toast, modal, confirmDialog, debounce, parseEuro, registerOffline, APP_VERSION } from '../shared/core.js';
+import { $, $$, esc, euro, num, fmtTime, fmtDT, fmtDate, todayStr, h, Api, toast, modal, confirmDialog, debounce, parseEuro, registerOffline, APP_VERSION, licenseGate } from '../shared/core.js';
 import { invoiceHtml } from '../shared/invoice.js';
 import { planEditor } from './plan-editor.js';
+import { deviceTab } from './transfer-ui.js';
 
 registerOffline();
 
@@ -443,7 +444,7 @@ VIEWS.live = async (el, soft) => {
     </div>
     <div class="cols live-cols"><div>
       <div class="card c-tables"><h2>Geöffnete Tische <span class="badge">${d.open_orders.length}</span></h2>
-        <div class="otables">${d.open_orders.map((t) => `<div class="otable" data-order="${t.order_id}"><div class="top"><b>Tisch ${t.number}</b><span class="num"><b>${euro(t.open_total)}</b></span></div>
+        <div class="otables">${d.open_orders.map((t) => `<div class="otable" data-order="${t.order_id}"><div class="top"><b>Tisch ${t.number}${t.guest_name ? ` · ${esc(t.guest_name)}` : ""}</b><span class="num"><b>${euro(t.open_total)}</b></span></div>
           <div class="small muted">${esc(t.waiter_name)} · seit ${fmtTime(t.opened_at, false)}${t.reopen_count ? ' · <span style="color:var(--warn)">wiedereröffnet</span>' : ''}</div>
           <div class="cnt">${t.items.reduce((s, i) => s + i.open_qty, 0)} Artikel offen${t.items.some((i) => i.cancelled_qty) ? ` · <span style="color:var(--danger)">${t.items.reduce((s, i) => s + i.cancelled_qty, 0)} storniert</span>` : ''}${t.items.some((i) => i.moved_qty) ? ` · ${t.items.reduce((s, i) => s + i.moved_qty, 0)} verschoben` : ''}</div>
           <ul>${t.items.map((i) => `<li class="${i.open_qty === 0 && i.cancelled_qty ? 'x' : ''}"><span>${i.open_qty || i.qty}× ${esc(i.article_name)}${i.cancelled_qty ? ` <span style="color:var(--danger)">(−${i.cancelled_qty} Storno)</span>` : ''}${i.moved_qty ? ` <span style="color:var(--info)">(${i.moved_qty} versch.)</span>` : ''}${i.origin_kind === 'move' ? ' <span class="muted">↪</span>' : ''}</span><span class="num">${euro(i.open_qty * i.unit_price)}</span></li>`).join('')}</ul></div>`).join('') || '<div class="muted">Keine Tische geöffnet</div>'}</div></div>
@@ -839,7 +840,7 @@ VIEWS.sollist = async (el) => {
 // ---- Verwaltung ----------------------------------------------------------------------
 VIEWS.verwaltung = async (el) => {
   const tab = qs().get('tab') || 'artikel';
-  const T = [['artikel', 'Artikel'], ['kategorien', 'Kategorien'], ['plan', 'Tischplan'], ['tische', 'Tische'], ['benutzer', 'Benutzer'], ['rollen', 'Rollen & Rechte'], ['einstellungen', 'Einstellungen']];
+  const T = [['artikel', 'Artikel'], ['kategorien', 'Kategorien'], ['plan', 'Tischplan'], ['tische', 'Tische'], ['benutzer', 'Benutzer'], ['rollen', 'Rollen & Rechte'], ['einstellungen', 'Einstellungen'], ['geraet', 'Gerät & Übertragung']];
   el.innerHTML = `<div class="head"><h1>Verwaltung</h1></div>${!can('manage') ? '<div class="notice">Nur lesender Zugriff – Änderungen erfordern das Recht „Verwaltung“.</div>' : ''}
     <div class="tabs">${T.map(([k, l]) => `<a class="chip ${k === tab ? 'on' : ''}" href="#verwaltung?tab=${k}">${l}</a>`).join('')}</div>
     <p class="small muted">Jede Änderung wird mit Vorher/Nachher im Protokoll als Admin-Eingriff gespeichert. Löschen ist nicht möglich – nur Deaktivieren.</p><div id="vw"></div>`;
@@ -957,6 +958,7 @@ VIEWS.verwaltung = async (el) => {
       } catch (e) { toast(e.message, 'error'); }
     });
   }
+  if (tab === 'geraet') await deviceTab(box, { api, canEdit: can('manage'), reload });
   if (tab === 'einstellungen') {
     const s = META.settings;
     const G = [
@@ -1003,4 +1005,5 @@ VIEWS.integritaet = async (el) => {
   $('#anc').addEventListener('click', async () => { try { const a = await api.post('/api/admin/anchor', {}); toast(`Anker gesetzt: Ereignis #${a.seq}`, 'ok'); route(); } catch (e) { toast(e.message, 'error'); } });
 };
 
-if (api.token) start(); else showLogin();
+// Erst Lizenz prüfen (Freischaltung pro Gerät), dann Anmeldung
+licenseGate(api).then(() => { if (api.token) start(); else showLogin(); });
