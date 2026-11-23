@@ -31,16 +31,17 @@ Alles läuft **im Gerät**: kein Server, kein Laptop, kein Fernzugang, im Betrie
 - **„App anpinnen“** einschalten (Einstellungen → Sicherheit), damit Mitarbeiter die Kasse nicht verlassen können.
 - Chrome und die App **nicht** deinstallieren und **keine Websitedaten löschen** – dabei würden alle Kassendaten gelöscht.
 
-## 3. Erste Anmeldung
+## 3. Erste Einrichtung (neues Gerät)
 
-Beim allerersten Start gibt es nur den Administrator: **Personalnummer 1, PIN 123456**.
+Die Kasse wird **leer** ausgeliefert: keine Artikel, keine Tische, keine Mitarbeiter.
 
-1. Auf dem Anmeldebildschirm der Kasse unten **„Admin-Bereich“** antippen und mit 1 / 123456 anmelden.
-2. Links bzw. unter „Mehr“: **PIN ändern** – sofort eine eigene PIN festlegen (mind. 6 Ziffern).
-3. **Verwaltung**: Kategorien, Artikel, Tische und Benutzer (Mitarbeiter, Schichtleitung) anlegen.
-   Zum Ausprobieren gibt es dort den Knopf **„Beispieldaten laden“** (Getränke, Speisen, 23 Tische und drei
-   Test-Benutzer: Nr. 2 Schichtleitung PIN 2222, Nr. 10 und 11 Mitarbeiter PIN 1010 / 1111).
-4. **„Abmelden und zur Kasse“** – zurück zur Kasse.
+1. **Gerät freischalten:** Gerätekennung an den Anbieter schicken und den erhaltenen Freischaltcode eingeben (siehe „Neu in Version 3.0“).
+2. **Ersteinrichtung:** Direkt danach eigene Zugangsdaten festlegen: Personalnummer, Name, PIN (6–12 Ziffern), PIN wiederholen.
+   Das geht nur einmal. Später ist alles unter **Verwaltung → Benutzer** änderbar. Die PIN bitte gut merken.
+3. Mit diesen Daten auf dem Anmeldebildschirm unten **„Admin-Bereich“** antippen und anmelden.
+4. **Verwaltung:** am besten zuerst den **Tischplan**, dann Kategorien, Artikel und Benutzer (Mitarbeiter, Schichtleitung) anlegen.
+   Läuft die Kasse schon auf einem anderen Gerät, lassen sich alle Einstellungen unter **„Gerät & Übertragung“** übernehmen.
+5. **„Abmelden und zur Kasse“** – zurück zur Kasse.
 
 ## 4. Kasse (Mitarbeiter)
 
@@ -130,6 +131,12 @@ Steht dort noch die alte Version (oder gar keine Versionsnummer): Schritte 2–4
 **Tipp:** Updates am besten außerhalb der Öffnungszeiten einspielen und vorher offene Tische abrechnen.
 Nötig ist das nicht – offene Tische bleiben auch beim Update erhalten.
 
+### Neu in Version 3.1 – Blanko-Auslieferung
+- Neue Geräte starten **leer** (keine Getränkekarte, keine Beispieldaten).
+- **Ersteinrichtung** direkt nach der Freischaltung: Der Kunde legt einmalig seine eigenen Admin-Zugangsdaten fest.
+  Den früheren Standard-Zugang 1 / 123456 gibt es auf neuen Geräten nicht mehr.
+- Bereits benutzte Geräte sind nicht betroffen: Daten und Zugangsdaten bleiben, wie sie sind.
+
 ### Neu in Version 3.0 – Freischaltung pro Gerät und Stammdaten-Übertragung
 **Wichtig beim Update auf 3.0:** Danach zeigt jedes Gerät einmalig **„Gerät freischalten“** mit einer Gerätekennung.
 Die Kasse ist bis zur Freischaltung gesperrt; **alle Daten bleiben erhalten**.
@@ -187,7 +194,7 @@ Die Kasse ist bis zur Freischaltung gesperrt; **alle Daten bleiben erhalten**.
   Tische von Kollegen gelb, jeweils mit offenem Betrag. Oben schaltet man zwischen **Plan** und **Liste** um.
 
 ### Neu in Version 2.2
-- **Getränkekarte übernehmen** (inkl. Kategorie „3 Nächte“ mit Donnerstag, Freitag, Girls Night): Admin-Bereich → Verwaltung → Artikel → Hinweis „Getränkekarte … können übernommen
+- *(Ab Version 3.1 entfernt – die Kasse wird leer ausgeliefert.)* **Getränkekarte übernehmen** (inkl. Kategorie „3 Nächte“ mit Donnerstag, Freitag, Girls Night): Admin-Bereich → Verwaltung → Artikel → Hinweis „Getränkekarte … können übernommen
   werden“ → „Ansehen und übernehmen“. Es werden nur fehlende Kategorien und Artikel angelegt; vorhandene Artikel mit
   gleichem Namen bleiben unverändert. Jede Anlage steht im Protokoll. Der Hinweis verschwindet, sobald alles übernommen ist.
 - Lange Fenster (z. B. diese Vorschau) scrollen auf dem Handy jetzt richtig, die Knöpfe bleiben unten sichtbar.

@@ -1,8 +1,8 @@
 // Ersteinrichtung: Rollen, erster Administrator, optional Beispieldaten
-import { one, run, tx } from './db.js';
+import { one, all, run, tx } from './db.js';
 import { logEvent } from './audit.js';
-import { DEFAULT_ROLES, hashPin, requirePerm } from './auth.js';
-import { nowIso, fail } from './util.js';
+import { DEFAULT_ROLES, hashPin, checkPin, validatePin, requirePerm } from './auth.js';
+import { nowIso, fail, int, str } from './util.js';
 
 const SYSTEM = { user: null, device: 'Kassengerät' };
 
@@ -58,5 +58,35 @@ export function loadDemoData(actor) {
     }
     logEvent(actor || SYSTEM, { type: 'DEMO_DATA_CREATED', category: 'admin', details: { kategorien: cats.length, tische: 23, testbenutzer: users.map((u) => u[1]) } });
     return { ok: true };
+  });
+}
+
+// ---- Ersteinrichtung nach der Freischaltung ------------------------------------------
+// Ein neues Gerät hat nur einen vorläufigen Administrator (Nr. 1, PIN 123456). Bevor sich jemand anmelden kann,
+// legt der Kunde einmalig seine eigenen Zugangsdaten fest. Geräte, die schon benutzt werden (weitere Benutzer,
+// Buchungen oder geänderte PIN), gelten als eingerichtet – dort erscheint die Ersteinrichtung nie.
+export function setupRequired() {
+  if (one("SELECT value FROM meta WHERE key='setup_done'")) return false;
+  const users = all('SELECT * FROM users');
+  const needed = users.length === 1 && !one('SELECT id FROM orders LIMIT 1') && checkPin('123456', users[0].pin_hash);
+  if (!needed) run("INSERT OR IGNORE INTO meta(key,value) VALUES('setup_done',?)", nowIso());
+  return needed;
+}
+
+export function completeSetup(b) {
+  if (!setupRequired()) fail(409, 'Die Ersteinrichtung ist bereits abgeschlossen. Zugangsdaten bitte unter Verwaltung → Benutzer ändern.');
+  const personal_nr = int(b.personal_nr, 'Personalnummer', { min: 1, max: 99999 });
+  const name = str(b.name, 'Ihren Namen', { max: 60 });
+  const pin = validatePin(b.pin, 'admin');
+  if (String(b.pin2 ?? '') !== pin) fail(400, 'Die beiden PINs stimmen nicht überein');
+  const u = one('SELECT * FROM users');
+  return tx(() => {
+    run('UPDATE users SET personal_nr=?, name=?, pin_hash=?, failed_logins=0, locked_until=NULL WHERE id=?', personal_nr, name, hashPin(pin), u.id);
+    run("INSERT OR IGNORE INTO meta(key,value) VALUES('setup_done',?)", nowIso());
+    logEvent({ user: { id: u.id, name, role: 'admin' }, device: 'Kassengerät' }, {
+      type: 'SETUP_COMPLETED', category: 'admin', before: { personal_nr: u.personal_nr, name: u.name }, after: { personal_nr, name, role: 'admin' },
+      details: { pin_festgelegt: true },
+    });
+    return { ok: true, personal_nr, name };
   });
 }

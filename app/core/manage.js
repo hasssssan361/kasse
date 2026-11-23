@@ -106,56 +106,6 @@ export function saveArticle(actor, id, b) {
   });
 }
 
-// ---- Artikelliste übernehmen -------------------------------------------------------
-// Legt Kategorien und Artikel aus einer Liste an (z. B. app/data/artikelliste.json).
-// Vorhandene Kategorien werden wiederverwendet, vorhandene Artikel (gleicher Name) übersprungen –
-// es wird nie etwas überschrieben oder gelöscht. Mit dryRun nur Vorschau.
-const VARIANT_NAMES = ['2 cl', 'Longdrink', 'Flasche'];
-export function importArticles(actor, list, { dryRun = false } = {}) {
-  requirePerm(actor, 'manage');
-  if (!list || !Array.isArray(list.kategorien)) fail(400, 'Ungültige Artikelliste');
-  const lc = (s) => String(s).trim().toLowerCase();
-  const cats = all('SELECT id, name FROM categories');
-  const arts = new Set(all('SELECT name FROM articles').map((a) => lc(a.name)));
-  const plan = { neue_kategorien: [], neue_artikel: [], uebersprungen: [] };
-  for (const k of list.kategorien) {
-    const cat = cats.find((c) => lc(c.name) === lc(k.name));
-    if (!cat) plan.neue_kategorien.push(k.name);
-    for (const a of k.artikel || []) {
-      if (arts.has(lc(a.name))) { plan.uebersprungen.push(a.name); continue; }
-      arts.add(lc(a.name));
-      plan.neue_artikel.push({ kategorie: k.name, name: a.name, preis: a.preis ?? null, varianten: a.varianten || null });
-    }
-  }
-  if (dryRun) return plan;
-  return tx(() => {
-    let sort = (one('SELECT MAX(sort) m FROM categories')?.m ?? -1) + 1;
-    const catId = {};
-    for (const k of list.kategorien) {
-      const cat = all('SELECT id, name FROM categories').find((c) => lc(c.name) === lc(k.name));
-      catId[k.name] = cat ? cat.id : saveCategory(actor, null, { name: k.name, kind: k.art || 'getraenk', color: k.farbe, sort: sort++ }).id;
-    }
-    const sortIn = {};
-    for (const a of plan.neue_artikel) {
-      sortIn[a.kategorie] = (sortIn[a.kategorie] ?? 0) + 1;
-      // Variante als reine Preisangabe = 2 cl / Longdrink / Flasche, sonst {name, preis}
-      const variants = (a.varianten || []).map((v, i) => (typeof v === 'object'
-        ? { name: v.name, price: v.preis }
-        : { name: VARIANT_NAMES[i] || `Variante ${i + 1}`, price: v }));
-      saveArticle(actor, null, {
-        name: a.name, category_id: catId[a.kategorie], price: variants.length ? Math.min(...variants.map((v) => v.price)) : a.preis,
-        vat: 19, sort: sortIn[a.kategorie], track_stock: 0, variants,
-      });
-    }
-    logEvent(actor, {
-      type: 'ARTICLES_IMPORTED', category: 'admin', reason: list.name || 'Artikelliste',
-      after: { kategorien_neu: plan.neue_kategorien.length, artikel_neu: plan.neue_artikel.length, uebersprungen: plan.uebersprungen.length },
-      details: { uebersprungen: plan.uebersprungen },
-    });
-    return plan;
-  });
-}
-
 // ---- Tische -----------------------------------------------------------------------
 export function saveTable(actor, id, b) {
   requirePerm(actor, 'manage');

@@ -9,7 +9,7 @@ import * as rep from './reports.js';
 import * as adm from './manage.js';
 import { logEvent, verifyIntegrity, lastAuditHash, createAnchor } from './audit.js';
 import { toCsv, toPdf, pdfTable } from './export.js';
-import { ensureBaseData, loadDemoData } from './seed.js';
+import { ensureBaseData, setupRequired, completeSetup } from './seed.js';
 import * as lic from './license.js';
 import * as xfer from './transfer.js';
 export { subscribe } from './events.js';
@@ -29,7 +29,7 @@ const TYPE_LABEL = {
   TABLE_CREATED: 'Tisch angelegt', TABLE_UPDATED: 'Tisch geändert', USER_CREATED: 'Benutzer angelegt', USER_UPDATED: 'Benutzer geändert',
   PIN_CHANGED: 'PIN geändert', ROLE_UPDATED: 'Rechte geändert', SETTINGS_UPDATED: 'Einstellungen geändert', ALERT_ACKNOWLEDGED: 'Warnung geprüft',
   EXPORT_CREATED: 'Export erstellt', INTEGRITY_CHECK: 'Integritätsprüfung', BACKUP_CREATED: 'Sicherung erstellt', ANCHOR_CREATED: 'Sicherungsanker',
-  SYSTEM_START: 'App gestartet', DEMO_DATA_CREATED: 'Beispieldaten angelegt', ARTICLES_IMPORTED: 'Artikelliste übernommen', PLAN_UPDATED: 'Tischplan geändert', GUEST_NAME_SET: 'Gästename am Tisch', LICENSE_ACTIVATED: 'Gerät freigeschaltet', MASTER_IMPORTED: 'Stammdaten übernommen', MASTER_EXPORTED: 'Stammdaten exportiert', CLOSING_DELETED: 'Tagesabschluss gelöscht',
+  SYSTEM_START: 'App gestartet', DEMO_DATA_CREATED: 'Beispieldaten angelegt', ARTICLES_IMPORTED: 'Artikelliste übernommen', PLAN_UPDATED: 'Tischplan geändert', GUEST_NAME_SET: 'Gästename am Tisch', LICENSE_ACTIVATED: 'Gerät freigeschaltet', SETUP_COMPLETED: 'Ersteinrichtung abgeschlossen', MASTER_IMPORTED: 'Stammdaten übernommen', MASTER_EXPORTED: 'Stammdaten exportiert', CLOSING_DELETED: 'Tagesabschluss gelöscht',
 };
 export { TYPE_LABEL };
 
@@ -43,8 +43,10 @@ const r = (method, pattern, perm, handler) => {
 
 // Anmeldung
 // Lizenz (ohne Anmeldung erreichbar – alles andere erst nach Freischaltung)
-r('GET', '/api/license', null, async () => lic.publicStatus(await lic.licenseStatus()));
-r('POST', '/api/license', null, (_a, _p, _q, b) => lic.activate(b.code));
+r('GET', '/api/license', null, async () => { const s = lic.publicStatus(await lic.licenseStatus()); return { ...s, setup_required: s.licensed ? setupRequired() : false }; });
+r('POST', '/api/license', null, async (_a, _p, _q, b) => ({ ...(await lic.activate(b.code)), setup_required: setupRequired() }));
+// Ersteinrichtung: einmalig eigene Admin-Zugangsdaten festlegen (erst nach der Freischaltung möglich)
+r('POST', '/api/setup', null, (_a, _p, _q, b) => completeSetup(b));
 r('POST', '/api/login', null, (_a, _p, _q, b) => auth.login(b));
 r('POST', '/api/logout', 'any', (a, _p, _q, b) => { auth.logout(a, b.reason); return { ok: true }; });
 r('GET', '/api/me', 'any', (a) => ({ user: a.user, permissions: a.permissions, kind: a.session.kind, settings: publicSettings() }));
@@ -144,8 +146,6 @@ r('GET', '/api/admin/integrity', 'dashboard', (a) => {
 });
 r('POST', '/api/admin/anchor', 'dashboard', (a) => createAnchor(a, 'manuell'));
 r('POST', '/api/admin/closings/:id/delete', 'manage', (a, p, _q, b) => adm.deleteOldestClosing(a, p.id, b));
-r('POST', '/api/admin/demo-data', 'manage', (a) => loadDemoData(a));
-r('POST', '/api/admin/import-articles', 'manage', (a, _p, _q, b) => adm.importArticles(a, b.list, { dryRun: !!b.dryRun }));
 
 // Verwaltung
 r('POST', '/api/admin/categories', 'manage', (a, _p, _q, b) => adm.saveCategory(a, null, b));
@@ -349,6 +349,7 @@ export async function dispatch({ method, path, query = {}, body = {}, token = nu
     if (!path.startsWith('/api/license')) {
       const ls = await lic.licenseStatus();
       if (!ls.licensed) return { status: 403, body: { error: ls.error || 'Dieses Gerät ist noch nicht freigeschaltet.', unlicensed: true, device_id: ls.device_id } };
+      if (path === '/api/login' && setupRequired()) return { status: 403, body: { error: 'Bitte zuerst die Ersteinrichtung abschließen (eigene Zugangsdaten festlegen).', setup_required: true } };
     }
     const m = route.re.exec(path);
     const params = Object.fromEntries(route.keys.map((k, i) => [k, decodeURIComponent(m[i + 1])]));

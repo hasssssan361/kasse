@@ -60,6 +60,16 @@ Kette und die Rechnungsnummerierung setzen dort an. Die Löschung wird als `CLOS
 - Freischaltung wird als `LICENSE_ACTIVATED` protokolliert.
 - Grenze: Die Prüfung läuft im Browser. Wer den Programmcode verändern kann, kann sie entfernen; sie schützt gegen normale Weitergabe, nicht gegen Entwickler.
 
+## Ersteinrichtung (Blanko-Auslieferung)
+
+`seed.js` legt auf einem neuen Gerät Rollen und einen vorläufigen Administrator an (Nr. 1, PIN 123456).
+- `setupRequired()` ist wahr, solange `meta.setup_done` fehlt **und** es nur diesen einen Benutzer mit der Standard-PIN und keine Bestellungen gibt.
+  - In diesem Zustand verweigert `dispatch` die Anmeldung (403 `setup_required`).
+  - `POST /api/setup` setzt einmalig Personalnummer, Name und PIN.
+  - Die Einrichtung wird als `SETUP_COMPLETED` protokolliert.
+- Geräte mit Daten gelten automatisch als eingerichtet (`setup_done` wird gesetzt).
+- Beispieldaten gibt es nur noch für die Tests (`init(driver, { demo: true })`), nicht in der App.
+
 ## Stammdaten-Übertragung
 
 `app/core/transfer.js`:

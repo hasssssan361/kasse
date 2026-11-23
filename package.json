@@ -8,6 +8,6 @@
   "scripts": {
     "start": "node tools/serve.mjs",
     "build": "node tools/build-sw.mjs",
-    "test": "node --no-warnings --test test/kasse.test.mjs && node --no-warnings --test test/migration.test.mjs && node --no-warnings --test test/transfer.test.mjs"
+    "test": "node --no-warnings --test test/kasse.test.mjs && node --no-warnings --test test/migration.test.mjs && node --no-warnings --test test/transfer.test.mjs && node --no-warnings --test test/setup.test.mjs"
   }
 }

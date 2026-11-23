@@ -39,6 +39,7 @@ test('Stammdaten von Gerät A nach Gerät B: verschlüsselt, 1:1 angeglichen, ni
   init(nodeDriver(path.join(dir, 'b.db')));
   const devB = await activateDevice(call);
   assert.notEqual(devA, devB, 'jedes Gerät hat eine eigene Kennung');
+  assert.equal((await call('POST', '/api/setup', { personal_nr: 1, name: 'Chef B', pin: '123456', pin2: '123456' })).s, 200, 'Ersteinrichtung auf Gerät B');
   adm = await login(1, '123456');
   const cat = (await call('POST', '/api/admin/categories', { name: 'Eigenes', kind: 'getraenk', color: '#123456' }, adm)).j.id;
   await call('POST', '/api/admin/articles', { name: 'Hausschnaps', category_id: cat, price: 300, vat: 19 }, adm);

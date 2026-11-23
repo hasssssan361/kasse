@@ -196,7 +196,7 @@ function onServerEvent(ev) {
 function renderTables() {
   if (!S.tables.length) {
     $('#view').innerHTML = `<div class="tables-view"><div class="empty">Noch keine Tische angelegt.<br>
-      Bitte im <b>Admin-Bereich</b> unter Verwaltung Tische und Artikel anlegen (oder Beispieldaten laden).<br><br>
+      Bitte im <b>Admin-Bereich</b> unter Verwaltung den Tischplan sowie Kategorien und Artikel anlegen.<br><br>
       <a class="btn primary" href="../admin/#verwaltung">Zum Admin-Bereich</a></div></div>`;
     return;
   }

@@ -49,7 +49,7 @@ function getWorker() {
 
 // Versionsnummer der App – wird auf dem Anmeldebildschirm und im Admin-Bereich angezeigt,
 // damit man nach einem Update sieht, dass die neue Version läuft. Bei jeder Veröffentlichung erhöhen.
-export const APP_VERSION = '3.0';
+export const APP_VERSION = '3.1';
 
 // Offline-Betrieb: Service Worker registrieren (liegt im Hauptordner der App)
 export function registerOffline() {
@@ -87,6 +87,7 @@ export class Api {
       // Lizenz fehlt oder ist abgelaufen → Freischalt-Bildschirm, danach neu laden
       showLicenseScreen(this, { licensed: false, device_id: res.body.device_id, error: res.body.error }).then(() => location.reload());
     }
+    if (res.status === 403 && res.body?.setup_required) showSetupScreen(this).then(() => location.reload());
     if (res.status >= 400) throw Object.assign(new Error(res.body?.error || `Fehler ${res.status}`), { status: res.status, data: res.body });
     return res;
   }
@@ -126,9 +127,51 @@ export async function licenseGate(api) {
   const fromLink = (location.hash.match(/[#&]lizenz=([^&]+)/) || [])[1];
   if (fromLink) history.replaceState(null, '', location.pathname + location.search);
   const res = await api.raw('GET', '/api/license').catch((e) => ({ body: { licensed: false, error: e.message } }));
-  const st = res.body || {};
-  if (st.licensed && !fromLink) return st;
-  return showLicenseScreen(api, st, fromLink ? decodeURIComponent(fromLink) : '');
+  let st = res.body || {};
+  if (!st.licensed || fromLink) st = await showLicenseScreen(api, st, fromLink ? decodeURIComponent(fromLink) : '');
+  // Neues Gerät: einmalig eigene Admin-Zugangsdaten festlegen
+  if (st.setup_required) await showSetupScreen(api);
+  return st;
+}
+
+let setupScreen = null;
+export function showSetupScreen(api) {
+  if (setupScreen) return setupScreen;
+  setupScreen = new Promise((resolve) => {
+    const el = h(`<div class="lic-screen"><div class="lic-card">
+      <h1>Ersteinrichtung</h1>
+      <p class="muted">Legen Sie Ihren eigenen Administrator-Zugang fest. Damit melden Sie sich im Admin-Bereich und an der Kasse an.
+        Später können Sie alles unter <b>Verwaltung → Benutzer</b> ändern und Mitarbeiter anlegen.</p>
+      <div class="fields" style="grid-template-columns:1fr">
+        <label class="field">Personalnummer<input id="sn" type="number" inputmode="numeric" min="1" max="99999" value="1"></label>
+        <label class="field">Ihr Name<input id="sname" type="text" maxlength="60" autocomplete="name" placeholder="z. B. Max Mustermann"></label>
+        <label class="field">PIN (6–12 Ziffern)<input id="sp1" type="password" inputmode="numeric" autocomplete="new-password"></label>
+        <label class="field">PIN wiederholen<input id="sp2" type="password" inputmode="numeric" autocomplete="new-password"></label>
+      </div>
+      <p class="small muted" style="margin-top:10px">Bitte die PIN gut merken – sie kann nicht wiederhergestellt werden.</p>
+      <div class="lic-err" id="serr"></div>
+      <button class="btn primary" id="sgo" style="width:100%;margin-top:10px">Zugang anlegen</button>
+    </div></div>`);
+    const err = (m) => { $('#serr', el).textContent = m || ''; };
+    const go = async () => {
+      err('');
+      const b = { personal_nr: Number($('#sn', el).value), name: $('#sname', el).value.trim(), pin: $('#sp1', el).value, pin2: $('#sp2', el).value };
+      if (!b.name) return err('Bitte Ihren Namen eingeben.');
+      $('#sgo', el).disabled = true;
+      try {
+        await api.raw('POST', '/api/setup', b);
+        toast(`Zugang angelegt – bitte mit Nr. ${b.personal_nr} und Ihrer PIN anmelden`, 'ok', 6000);
+        el.remove();
+        setupScreen = null;
+        resolve();
+      } catch (e) { err(e.message); } finally { $('#sgo', el).disabled = false; }
+    };
+    $('#sgo', el).addEventListener('click', go);
+    $('#sp2', el).addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
+    document.body.append(el);
+    setTimeout(() => $('#sname', el).focus(), 50);
+  });
+  return setupScreen;
 }
 
 let licenseScreen = null;

@@ -398,36 +398,6 @@ test('Gästename: Tisch benennen (auch freier Tisch), protokolliert, endet mit d
   assert.equal(ov.guest_name, null);
 });
 
-test('Getränkekarte übernehmen: Vorschau, Anlage mit Varianten, nichts doppelt, protokolliert', async () => {
-  const list = JSON.parse(fs.readFileSync(new URL('../app/data/artikelliste.json', import.meta.url), 'utf8'));
-  const total = list.kategorien.reduce((s, k) => s + k.artikel.length, 0);
-  assert.equal((await call('POST', '/api/admin/import-articles', { list, dryRun: true }, T.anna)).s, 403);
-  const before = (await call('GET', '/api/admin/meta', null, T.admin)).j;
-  const dry = (await call('POST', '/api/admin/import-articles', { list, dryRun: true }, T.admin)).j;
-  assert.equal(dry.neue_artikel.length + dry.uebersprungen.length, total);
-  assert.equal((await call('GET', '/api/admin/meta', null, T.admin)).j.articles.length, before.articles.length, 'Vorschau ändert nichts');
-  const r = await call('POST', '/api/admin/import-articles', { list }, T.admin);
-  assert.equal(r.s, 200, JSON.stringify(r.j));
-  const m = (await call('GET', '/api/admin/meta', null, T.admin)).j;
-  assert.equal(m.articles.length, before.articles.length + dry.neue_artikel.length);
-  const jaeger = m.articles.find((a) => a.name === 'Jägermeister');
-  assert.deepEqual(m.variants.filter((v) => v.article_id === jaeger.id).map((v) => `${v.name}:${v.price}`), ['2 cl:260', 'Longdrink:800', 'Flasche:7500']);
-  assert.equal(jaeger.price, 260);
-  const donn = m.articles.find((a) => a.name === 'Donnerstag');
-  assert.deepEqual(m.variants.filter((v) => v.article_id === donn.id).map((v) => `${v.name}:${v.price}`), ['Bier:200', 'Longdrink:500', 'Shot:150', 'Shot doppelt:250']);
-  assert.equal(m.categories.find((c) => c.id === donn.category_id).name, '3 Nächte');
-  assert.equal(m.articles.find((a) => a.name === 'Girls Night').price, 600);
-  assert.equal(m.categories.find((c) => c.id === jaeger.category_id).name, 'Spirituosen');
-  assert.ok(dry.uebersprungen.includes('Latte Macchiato'), 'vorhandener Artikel bleibt unverändert');
-  assert.equal(m.articles.find((a) => a.name === 'Latte Macchiato').price, 420);
-  assert.equal(m.articles.find((a) => a.name === 'Shot').price, 150);
-  const again = (await call('POST', '/api/admin/import-articles', { list, dryRun: true }, T.admin)).j;
-  assert.equal(again.neue_artikel.length, 0);
-  assert.equal(again.neue_kategorien.length, 0);
-  const ev = (await call('GET', '/api/admin/audit?type=ARTICLES_IMPORTED', null, T.admin)).j.rows;
-  assert.equal(ev.length, 1);
-});
-
 test('Integrität vor Manipulationsversuchen: alles in Ordnung', async () => {
   const r = (await call('GET', '/api/admin/integrity', null, T.admin)).j;
   assert.equal(r.ok, true, JSON.stringify(r.problems));
