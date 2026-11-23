@@ -20,7 +20,7 @@ Alles läuft **im Gerät**: kein Server, kein Laptop, kein Fernzugang, im Betrie
 
 **Voraussetzung:** Android-Gerät mit aktuellem **Google Chrome**.
 
-1. Den Installations-Link (siehe Abschnitt 8) in **Chrome** öffnen.
+1. Den Installations-Link **https://hasssssan361.github.io/kasse/** in **Chrome** öffnen.
 2. Chrome zeigt „**App installieren**“ an – antippen. Falls nicht: Menü ⋮ → „**App installieren**“
    (bei manchen Versionen „Zum Startbildschirm hinzufügen“).
 3. Auf dem Startbildschirm erscheint das blaue Symbol **„Kasse“**. Ab jetzt nur noch darüber öffnen.
@@ -109,12 +109,14 @@ informieren (Zweck, gespeicherte Daten, Löschung). Bei Betriebsrat ist dessen Z
 
 ## 8. Bereitstellung des Installations-Links
 
-Die App muss einmal auf einem **kostenlosen Webspeicher mit HTTPS** liegen, damit Chrome sie installieren kann
-(z. B. GitHub Pages). Hochgeladen wird nur der Ordner `app/` – das Programm, **keine Kassendaten**.
-Der Link wird hier eingetragen, sobald die App bereitgestellt ist.
+**Installations-Link: https://hasssssan361.github.io/kasse/**
 
-Nach Änderungen an der App: `npm run build` ausführen und den Ordner `app/` erneut hochladen. Das Gerät lädt das
-Update beim nächsten Öffnen mit Internet automatisch.
+Die App liegt kostenlos auf GitHub Pages (Repository `hasssssan361/kasse`). Dort liegt nur das Programm –
+**keine Kassendaten**; diese bleiben ausschließlich auf dem Gerät.
+
+Updates: Bei jedem Hochladen auf den Zweig `main` führt GitHub automatisch alle Tests aus und veröffentlicht die App
+nur, wenn alle bestehen. Das Gerät lädt das Update beim nächsten Öffnen mit Internet und nutzt es ab dem
+darauffolgenden Start.
 
 ## 9. Für Entwickler
 
