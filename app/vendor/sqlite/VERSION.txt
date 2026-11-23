@@ -1,0 +1,2 @@
+SQLite WebAssembly, @sqlite.org/sqlite-wasm 3.53.4-build2 (Apache-2.0 / SQLite: Public Domain)
+Quelle: https://www.npmjs.com/package/@sqlite.org/sqlite-wasm

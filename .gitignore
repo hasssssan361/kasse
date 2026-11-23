@@ -1,0 +1,2 @@
+# Nur Entwicklungs-/Testdateien ausschließen
+node_modules/
