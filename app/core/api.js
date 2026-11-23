@@ -27,7 +27,7 @@ const TYPE_LABEL = {
   TABLE_CREATED: 'Tisch angelegt', TABLE_UPDATED: 'Tisch geändert', USER_CREATED: 'Benutzer angelegt', USER_UPDATED: 'Benutzer geändert',
   PIN_CHANGED: 'PIN geändert', ROLE_UPDATED: 'Rechte geändert', SETTINGS_UPDATED: 'Einstellungen geändert', ALERT_ACKNOWLEDGED: 'Warnung geprüft',
   EXPORT_CREATED: 'Export erstellt', INTEGRITY_CHECK: 'Integritätsprüfung', BACKUP_CREATED: 'Sicherung erstellt', ANCHOR_CREATED: 'Sicherungsanker',
-  SYSTEM_START: 'App gestartet', DEMO_DATA_CREATED: 'Beispieldaten angelegt', ARTICLES_IMPORTED: 'Artikelliste übernommen', CLOSING_DELETED: 'Tagesabschluss gelöscht',
+  SYSTEM_START: 'App gestartet', DEMO_DATA_CREATED: 'Beispieldaten angelegt', ARTICLES_IMPORTED: 'Artikelliste übernommen', PLAN_UPDATED: 'Tischplan geändert', CLOSING_DELETED: 'Tagesabschluss gelöscht',
 };
 export { TYPE_LABEL };
 
@@ -62,6 +62,7 @@ r('GET', '/api/pos/bootstrap', 'pos', () => ({
   articles: all('SELECT * FROM articles WHERE active=1 ORDER BY sort, name'),
   variants: all('SELECT * FROM article_variants WHERE active=1 ORDER BY sort, id'),
   tables: pos.tablesOverview(),
+  plan: adm.getPlan(),
   users: all('SELECT id, name, personal_nr FROM users WHERE active=1 ORDER BY name'),
   settings: publicSettings(),
 }));
@@ -107,7 +108,7 @@ r('GET', '/api/admin/meta', 'dashboard', () => ({
   categories: all('SELECT * FROM categories ORDER BY sort, name'),
   articles: all('SELECT * FROM articles ORDER BY sort, name'),
   variants: all('SELECT * FROM article_variants ORDER BY sort, id'),
-  type_labels: TYPE_LABEL, settings: auth.getSettings(), permissions: auth.PERMISSIONS, roles: adm.listRoles(),
+  type_labels: TYPE_LABEL, plan: adm.getPlan(), settings: auth.getSettings(), permissions: auth.PERMISSIONS, roles: adm.listRoles(),
 }));
 r('GET', '/api/admin/audit', 'dashboard', (_a, _p, q) => rep.auditQuery(q));
 r('GET', '/api/admin/audit/:seq', 'dashboard', (_a, p) => rep.auditEntry(p.seq));
@@ -152,6 +153,7 @@ r('POST', '/api/admin/users', 'manage', (a, _p, _q, b) => adm.saveUser(a, null, 
 r('PUT', '/api/admin/users/:id', 'manage', (a, p, _q, b) => adm.saveUser(a, p.id, b));
 r('PUT', '/api/admin/roles/:code', 'manage', (a, p, _q, b) => adm.saveRole(a, p.code, b));
 r('PUT', '/api/admin/settings', 'manage', (a, _p, _q, b) => adm.saveSettings(a, b));
+r('PUT', '/api/admin/plan', 'manage', (a, _p, _q, b) => adm.savePlan(a, b));
 
 // Export (CSV / PDF)
 r('GET', '/api/admin/export/:what', 'dashboard', (a, p, q) => exportData(a, p.what, q));

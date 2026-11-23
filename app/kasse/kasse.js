@@ -3,6 +3,7 @@
 // wird nichts als gebucht angezeigt.
 import { $, $$, esc, euro, fmtTime, fmtDT, h, Api, toast, modal, confirmDialog, debounce, parseEuro, uuid, registerOffline, APP_VERSION } from '../shared/core.js';
 import { invoiceHtml } from '../shared/invoice.js';
+import { planSvg } from '../shared/plan.js';
 
 registerOffline();
 
@@ -153,7 +154,7 @@ async function start() {
 
 async function loadBoot() {
   const b = await api.get('/api/pos/bootstrap');
-  S.cats = b.categories; S.arts = b.articles; S.variants = b.variants || []; S.tables = b.tables; S.users = b.users; S.settings = b.settings;
+  S.cats = b.categories; S.arts = b.articles; S.variants = b.variants || []; S.tables = b.tables; S.plan = b.plan || { areas: [] }; S.users = b.users; S.settings = b.settings;
   if (!S.cats.find((c) => c.id === S.cat)) S.cat = S.cats[0]?.id ?? null;
 }
 
@@ -185,7 +186,7 @@ function go(view, tableId) {
 const refreshTables = debounce(async () => { S.tables = await api.get('/api/pos/tables'); if (S.view === 'tables') renderTables(); }, 250);
 const refreshOrder = debounce(() => { if (S.view === 'order') loadOrder(true); }, 200);
 function onServerEvent(ev) {
-  if (/^(ARTICLE|CATEGORY|TABLE_CREATED|TABLE_UPDATED|SETTINGS)/.test(ev.type)) { loadBoot().then(() => { if (S.view === 'order') renderCatalog(); else if (S.view === 'tables') renderTables(); }); return; }
+  if (/^(ARTICLE|CATEGORY|TABLE_CREATED|TABLE_UPDATED|SETTINGS|PLAN)/.test(ev.type)) { loadBoot().then(() => { if (S.view === 'order') renderCatalog(); else if (S.view === 'tables') renderTables(); }); return; }
   refreshTables();
   const t = S.tables.find((x) => x.id === S.tableId);
   if (S.view === 'order' && t && (ev.table_no === t.number || ev.target_table_no === t.number || (S.data?.order && ev.order_id === S.data.order.id))) refreshOrder();
@@ -199,22 +200,55 @@ function renderTables() {
       <a class="btn primary" href="../admin/#verwaltung">Zum Admin-Bereich</a></div></div>`;
     return;
   }
-  const areas = [...new Set(S.tables.map((t) => t.area))];
+  // Bereiche: zuerst die aus dem Tischplan (in dessen Reihenfolge), dann weitere aus der Tischliste
+  const planAreas = (S.plan?.areas || []).filter((a) => a.elements.length);
+  const areas = [...new Set([...planAreas.map((a) => a.name), ...S.tables.map((t) => t.area)])];
   if (!areas.includes(S.area)) S.area = areas[0];
+  const pa = planAreas.find((a) => a.name === S.area);
+  let mode = 'plan';
+  try { mode = localStorage.getItem('kasse_plan_mode') || 'plan'; } catch {}
+  const usePlan = pa && mode === 'plan';
   const v = $('#view');
   const mineCount = S.tables.filter((t) => t.waiter_id === S.me.id).length;
+  const cls = (t) => (!t.order_id ? 'free' : t.waiter_id === S.me.id ? 'mine' : 'other');
+  const tile = (t) => `<button class="ttile ${cls(t)}" data-t="${t.id}"><span class="no">${t.number}</span><span class="nm">${esc(t.name || t.seats + ' Plätze')}</span>
+        ${t.order_id ? `<span class="meta">${esc(t.waiter_name)} · seit ${fmtTime(t.opened_at, false)}${t.reopen_count ? ' · <b>wiedereröffnet</b>' : ''}</span>
+        <span class="sum">${euro(t.open_total)}</span>` : '<span class="sum">frei</span>'}</button>`;
+  const inArea = S.tables.filter((t) => t.area === S.area);
+  let body;
+  if (usePlan) {
+    const byNo = new Map(S.tables.map((t) => [t.number, t]));
+    const planned = new Set(pa.elements.flatMap((e) => (e.type === 'table' ? [e.number] : e.type === 'counter' ? Array.from({ length: e.seat_count || 0 }, (_, i) => e.seat_start + i) : [])));
+    const status = (n) => { const t = byNo.get(n); return !t ? { cls: 'none', sub: '' } : { cls: cls(t), sub: t.order_id ? euro(t.open_total) : '' }; };
+    const rest = inArea.filter((t) => !planned.has(t.number));
+    body = `<div class="plan-wrap"><div id="kplan">${planSvg(pa, { status, crop: true })}</div></div>
+      ${rest.length ? `<h3 class="small muted" style="margin:14px 0 8px">Weitere Tische (nicht im Plan)</h3><div class="tgrid">${rest.map(tile).join('')}</div>` : ''}`;
+  } else body = `<div class="tgrid">${inArea.map(tile).join('')}</div>`;
   v.innerHTML = `<div class="tables-view">
     <div class="areas">${areas.map((a) => `<button class="chip ${a === S.area ? 'on' : ''}" data-area="${esc(a)}">${esc(a)}
       <span class="badge">${S.tables.filter((t) => t.area === a && t.order_id).length}</span></button>`).join('')}
+      ${pa ? `<span class="row" style="gap:4px"><button class="chip ${usePlan ? 'on' : ''}" data-mode="plan">Plan</button><button class="chip ${usePlan ? '' : 'on'}" data-mode="list">Liste</button>
+        ${usePlan ? '<button class="chip" data-zoom="-1" aria-label="Verkleinern">−</button><button class="chip" data-zoom="1" aria-label="Vergrößern">+</button>' : ''}</span>` : ''}
       <div class="legend"><span><i style="background:var(--ok)"></i>meine Tische (${mineCount})</span><span><i style="background:var(--warn)"></i>Kollegen</span><span><i style="background:var(--surface-3)"></i>frei</span></div></div>
-    <div class="tgrid">${S.tables.filter((t) => t.area === S.area).map((t) => {
-    const cls = !t.order_id ? 'free' : t.waiter_id === S.me.id ? 'mine' : 'other';
-    return `<button class="ttile ${cls}" data-t="${t.id}"><span class="no">${t.number}</span><span class="nm">${esc(t.name || t.seats + ' Plätze')}</span>
-        ${t.order_id ? `<span class="meta">${esc(t.waiter_name)} · seit ${fmtTime(t.opened_at, false)}${t.reopen_count ? ' · <b>wiedereröffnet</b>' : ''}</span>
-        <span class="sum">${euro(t.open_total)}</span>` : '<span class="sum">frei</span>'}</button>`;
-  }).join('')}</div></div>`;
+    ${body}</div>`;
   $$('[data-area]', v).forEach((b) => b.addEventListener('click', () => { S.area = b.dataset.area; renderTables(); }));
-  $$('[data-t]', v).forEach((b) => b.addEventListener('click', () => { S.sel.clear(); S.buf = ''; S.pane = 'catalog'; go('order', Number(b.dataset.t)); }));
+  $$('[data-mode]', v).forEach((b) => b.addEventListener('click', () => { try { localStorage.setItem('kasse_plan_mode', b.dataset.mode); } catch {} renderTables(); }));
+  const openTable = (id) => { S.sel.clear(); S.buf = ''; S.pane = 'catalog'; go('order', id); };
+  $$('[data-t]', v).forEach((b) => b.addEventListener('click', () => openTable(Number(b.dataset.t))));
+  const svg = $('#kplan svg', v);
+  if (svg) {
+    // Auf schmalen Bildschirmen (Handy) größer starten, damit die Tische gut antippbar sind – seitlich wischen
+    S.planZoom = S.planZoom || (svg.parentElement.clientWidth < 600 ? 2 : 1);
+    svg.style.width = `${S.planZoom * 100}%`;
+    $$('[data-zoom]', v).forEach((b) => b.addEventListener('click', () => { S.planZoom = Math.min(4, Math.max(1, S.planZoom + Number(b.dataset.zoom) * 0.5)); svg.style.width = `${S.planZoom * 100}%`; }));
+    svg.addEventListener('click', (ev) => {
+      const g = ev.target.closest('[data-n]');
+      if (!g) return;
+      const t = S.tables.find((x) => x.number === Number(g.dataset.n));
+      if (!t) return toast(`Platz ${g.dataset.n} ist noch nicht angelegt – bitte den Tischplan im Admin-Bereich speichern`, 'error');
+      openTable(t.id);
+    });
+  }
 }
 
 // ---- Bestellung ------------------------------------------------------------------
@@ -314,7 +348,7 @@ function renderTicket() {
   const sw = $$('#mswitch [data-pane]');
   const openItems = d.items.filter((i) => i.open_qty > 0);
   if (sw[1]) sw[1].textContent = `Bestellung (${openItems.reduce((s, i) => s + i.open_qty, 0)})`;
-  $('#thead').innerHTML = `<button class="btn sm" id="back">←</button><span class="tno">Tisch ${t.number}</span>
+  $('#thead').innerHTML = `<button class="btn sm" id="back">←</button><span class="tno">${t.name ? `${esc(t.name)} <small class="muted">Nr. ${t.number}</small>` : `Tisch ${t.number}`}</span>
     <div class="grow small muted">${o ? `${esc(o.waiter_name)} · seit ${fmtTime(o.opened_at, false)}${o.reopen_count ? ` · <span class="badge warn">${o.reopen_count}× wiedereröffnet</span>` : ''}` : 'frei'}</div>`;
   $('#back').addEventListener('click', () => go('tables'));
   const lineHtml = (i) => {

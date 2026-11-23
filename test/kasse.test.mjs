@@ -288,6 +288,45 @@ test('Varianten: Artikel mit Shot/Longdrink/Flasche, Auswahl Pflicht, Lager je V
   assert.equal(JSON.parse(ev.before_json).varianten.length, 3);
 });
 
+test('Tischplan: Tische und Tresenplätze werden buchbar angelegt, Nummern eindeutig, protokolliert', async () => {
+  const plan = { areas: [
+    { name: 'Gastraum', w: 1200, h: 800, elements: [
+      { id: 'a', type: 'table', shape: 'circle', x: 40, y: 40, w: 90, h: 120, number: 1, seats: 4 },
+      { id: 'b', type: 'counter', x: 300, y: 300, w: 360, h: 70, seat_count: 3, seat_start: 201, seat_side: 'unten', label: 'Bar' },
+      { id: 'c', type: 'entrance', x: 500, y: 740, w: 170, h: 50, label: 'Eingang' },
+      { id: 'd', type: 'slot', shape: 'square', x: 1100, y: 40, w: 80, h: 80 },
+      { id: 'e', type: 'table', shape: 'rect', x: 5000, y: 40, w: 140, h: 90, number: 250, seats: 6 },
+    ] },
+    { name: 'Terrasse', w: 1200, h: 800, elements: [{ id: 'z', type: 'zone', x: 20, y: 20, w: 600, h: 300 }] },
+  ] };
+  assert.equal((await call('PUT', '/api/admin/plan', plan, T.anna)).s, 403);
+  const dup = structuredClone(plan);
+  dup.areas[0].elements[4].number = 202;
+  const d = await call('PUT', '/api/admin/plan', dup, T.admin);
+  assert.equal(d.s, 400);
+  assert.match(d.j.error, /202.*doppelt/);
+  const r = await call('PUT', '/api/admin/plan', plan, T.admin);
+  assert.equal(r.s, 200, JSON.stringify(r.j));
+  assert.equal(r.j.tische_neu, 4); // 3 Tresenplätze + Tisch 250 (Tisch 1 gab es schon)
+  const saved = r.j.plan.areas[0].elements;
+  assert.equal(saved[0].h, 90, 'Kreis bleibt rund');
+  assert.equal(saved[4].x, 1200 - 140, 'Position bleibt im Bereich');
+  assert.equal(r.j.plan.areas[1].elements[0].label, 'Terrasse');
+  const b = (await call('GET', '/api/pos/bootstrap', null, T.anna)).j;
+  assert.equal(b.plan.areas.length, 2);
+  const seat = b.tables.find((t) => t.number === 202);
+  assert.equal(seat.name, 'Bar 2');
+  assert.equal(seat.area, 'Gastraum');
+  assert.equal(b.tables.find((t) => t.number === 1).area, 'Gastraum');
+  // Tresenplatz ist buchbar wie ein Tisch
+  const add = await call('POST', '/api/pos/items', { table_id: seat.id, article_id: boot.articles.find((a) => !boot.variants?.some((v) => v.article_id === a.id)).id, qty: 1 }, T.anna);
+  assert.equal(add.s, 200, JSON.stringify(add.j));
+  const ev = (await call('GET', '/api/admin/audit?type=PLAN_UPDATED', null, T.admin)).j.rows;
+  assert.equal(ev.length, 1);
+  assert.equal((await call('PUT', '/api/admin/plan', r.j.plan, T.admin)).j.tische_neu, 0);
+  assert.equal((await call('GET', '/api/admin/audit?type=PLAN_UPDATED', null, T.admin)).j.rows.length, 1, 'unveränderter Plan erzeugt keinen Eintrag');
+});
+
 test('Getränkekarte übernehmen: Vorschau, Anlage mit Varianten, nichts doppelt, protokolliert', async () => {
   const list = JSON.parse(fs.readFileSync(new URL('../app/data/artikelliste.json', import.meta.url), 'utf8'));
   const total = list.kategorien.reduce((s, k) => s + k.artikel.length, 0);

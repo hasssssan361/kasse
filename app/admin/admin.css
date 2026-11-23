@@ -234,3 +234,7 @@ table.cmp tr.chg { background: var(--accent-soft); }
 table.cmp dl.kv2 { display: grid; gap: 2px; margin: 0; }
 .ev.ec { background: var(--info-soft); }
 .tl.ec::before { background: var(--info); }
+
+/* Tischplan-Editor: Speichern-Leiste bleibt unten sichtbar (auf dem Handy über der Navigationsleiste) */
+.plan-savebar { margin-top: 12px; position: sticky; bottom: 0; background: var(--bg); padding: 8px 0; z-index: 5; }
+@media (max-width: 820px) { .plan-savebar { bottom: calc(64px + env(safe-area-inset-bottom)); } }

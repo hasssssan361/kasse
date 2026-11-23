@@ -78,7 +78,7 @@ Auf dem Smartphone wechselt man oben zwischen **„Artikel“** und **„Bestell
 | **Mitarbeiter** | Kennzahlen pro Tag/Woche/Monat inkl. Stornoquote |
 | **Umsatz & Abschlüsse** | Umsatz nach Zahlungsart/Kategorie/Uhrzeit/Artikel/MwSt, **Tagesabschluss**, Schichten |
 | **Soll-Ist (Lager)** | Warenentnahmen buchen und mit Verkäufen vergleichen; Varianten werden einzeln gezählt, per EC bezahlte Artikel als eigene Spalte |
-| **Verwaltung** | Artikel, Kategorien, Tische, Benutzer, Rechte, Einstellungen (jede Änderung protokolliert). Beim Anlegen eines Artikels: **„Hat dieser Artikel Varianten?“** → Ja → **„Wie viele Varianten?“** → je Variante Name und Preis |
+| **Verwaltung** | Artikel, Kategorien, **Tischplan**, Tische, Benutzer, Rechte, Einstellungen (jede Änderung protokolliert). Beim Anlegen eines Artikels: **„Hat dieser Artikel Varianten?“** → Ja → **„Wie viele Varianten?“** → je Variante Name und Preis |
 | **Manipulationsschutz** | Prüft die komplette Hash-Kette und die Schutzregeln der Datenbank |
 
 ## 6. Tagesabschluss und Löschen
@@ -129,6 +129,22 @@ Steht dort noch die alte Version (oder gar keine Versionsnummer): Schritte 2–4
 
 **Tipp:** Updates am besten außerhalb der Öffnungszeiten einspielen und vorher offene Tische abrechnen.
 Nötig ist das nicht – offene Tische bleiben auch beim Update erhalten.
+
+### Neu in Version 2.3 – Tischplan
+- **Admin-Bereich → Verwaltung → Tischplan:** oben Elemente hinzufügen – Tische als ▭ Rechteck, ◻ Quadrat oder
+  ◯ Kreis, **Tresen** (mit Gastplätzen), **Eingang** (grün), **Spielautomaten** (◻/▯, lila gestreift) und
+  **Terrasse / Bereich** (gestrichelte Fläche).
+- **Bedienung:** Element antippen = auswählen · ziehen = verschieben · blauer Punkt = Größe ändern. Unten stehen
+  Nummer, Plätze, Bezeichnung, Form, „Drehen 90°“, „Duplizieren“ und „Entfernen“. Mit **− / +** zoomen.
+- **Tresen:** Anzahl der Gastplätze, Nummer des 1. Platzes (z. B. 101) und die Seite (unten/oben/links/rechts)
+  einstellbar. Jeder Gastplatz ist an der Kasse buchbar wie ein Tisch („Tresen 1“, „Tresen 2“ …).
+- **Mehrere Bereiche:** „+ Bereich“ (z. B. „Terrasse“). Den aktiven Bereich noch einmal antippen, um ihn
+  umzubenennen, seine Größe zu ändern oder ihn zu entfernen.
+- **„Plan speichern“:** Fehlende Tische und Tresenplätze werden dabei automatisch angelegt (protokolliert).
+  Vorhandene Tische mit gleicher Nummer werden übernommen. Ein aus dem Plan entfernter Tisch bleibt bestehen und kann
+  unter „Tische“ deaktiviert werden. Spielautomaten, Eingang und Terrassenfläche sind nicht buchbar.
+- **An der Kasse:** Im Bereich mit Plan wird der Plan gezeigt. Freie Tische sind neutral, eigene Tische grün,
+  Tische von Kollegen gelb, jeweils mit offenem Betrag. Oben schaltet man zwischen **Plan** und **Liste** um.
 
 ### Neu in Version 2.2
 - **Getränkekarte übernehmen** (inkl. Kategorie „3 Nächte“ mit Donnerstag, Freitag, Girls Night): Admin-Bereich → Verwaltung → Artikel → Hinweis „Getränkekarte … können übernommen

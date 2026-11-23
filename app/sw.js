@@ -1,12 +1,13 @@
 // Automatisch erzeugt von tools/build-sw.mjs – nicht von Hand bearbeiten.
 // Hält alle App-Dateien im Gerät vor, damit die Kasse ohne Internet startet.
-const VERSION = 'ab8913d856ef';
+const VERSION = '71f7751d1b5d';
 const CACHE = 'kasse-' + VERSION;
 const FILES = [
   "./",
   "admin/admin.css",
   "admin/admin.js",
   "admin/index.html",
+  "admin/plan-editor.js",
   "core/alerts.js",
   "core/api.js",
   "core/audit.js",
@@ -34,6 +35,7 @@ const FILES = [
   "shared/core.js",
   "shared/engine-worker.js",
   "shared/invoice.js",
+  "shared/plan.js",
   "vendor/sqlite/sqlite3.mjs",
   "vendor/sqlite/sqlite3.wasm"
 ];

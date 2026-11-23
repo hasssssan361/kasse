@@ -146,3 +146,33 @@ table.data tr.storno td { background: color-mix(in srgb, var(--danger-soft) 60%,
 /* Verbindungsanzeige */
 .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px var(--ok-soft); flex: none; }
 .dot.off { background: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
+
+/* Tischplan (Admin-Editor und Kasse) */
+.plan-svg { width: 100%; height: auto; display: block; background: var(--surface-2); border-radius: var(--radius-sm); user-select: none; -webkit-user-select: none; }
+.plan-svg text { font-family: var(--font); text-anchor: middle; pointer-events: none; font-weight: 700; }
+.plan-svg .floor { fill: var(--surface-2); }
+.plan-svg .gl { fill: none; stroke: var(--border); stroke-width: 1; }
+.plan-svg .pe { cursor: pointer; }
+.plan-svg.edit .pe, .plan-svg.edit .hdl { touch-action: none; cursor: grab; }
+.pe-table .shp { fill: var(--surface); stroke: var(--text-3); stroke-width: 2.5; }
+.pe-table text { fill: var(--text); }
+.pe-table .ts { font-weight: 600; fill: var(--text-2); }
+.pe-table.mine .shp, .seat.mine circle { fill: var(--ok-soft); stroke: var(--ok); stroke-width: 4; }
+.pe-table.other .shp, .seat.other circle { fill: var(--warn-soft); stroke: var(--warn); stroke-width: 4; }
+.pe-table.none .shp, .seat.none circle { stroke-dasharray: 6 5; opacity: .6; }
+.pe-counter .shp { fill: #8b5e34; stroke: #5c3b1e; stroke-width: 3; }
+.pe-counter > text { fill: #fff; }
+.seat circle { fill: var(--surface); stroke: #8b5e34; stroke-width: 3; }
+.seat text { fill: var(--text); }
+.pe-entrance .shp { fill: #16a34a; stroke: #0f7a35; stroke-width: 3; }
+.pe-entrance text, .pe-entrance .arr { fill: #fff; }
+.pe-slot .shp { fill: url(#pslot); stroke: #c026d3; stroke-width: 3; }
+.plan-svg .ps1 { fill: #3b0764; } .plan-svg .ps2 { fill: #581c87; }
+.pe-slot .slot-screen { fill: #0b0b12; stroke: #f0abfc; stroke-width: 1.5; }
+.pe-slot text { fill: #fff; } .pe-slot .slot-777 { fill: #fde047; }
+.pe-zone .shp { fill: rgba(34,197,94,.10); stroke: #22c55e; stroke-width: 3; stroke-dasharray: 12 8; }
+.pe-zone .zl { fill: #16a34a; text-anchor: start; font-size: 20px; }
+.plan-svg .selbox { fill: none; stroke: var(--accent); stroke-width: 3; stroke-dasharray: 8 5; pointer-events: none; }
+.plan-svg .hdl circle { fill: var(--accent); stroke: #fff; stroke-width: 3; }
+.plan-svg .hdl path { stroke: #fff; stroke-width: 3; fill: none; pointer-events: none; }
+.plan-wrap { overflow: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); -webkit-overflow-scrolling: touch; }

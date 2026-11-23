@@ -184,6 +184,91 @@ export function saveTable(actor, id, b) {
   });
 }
 
+// ---- Tischplan ----------------------------------------------------------------------
+// Der Plan liegt als Eintrag „floor_plan“ in den (geschützten) Einstellungen. Jeder Tisch und jeder
+// Tresenplatz im Plan ist ein buchbarer Tisch: Beim Speichern werden fehlende Tische angelegt und
+// Bereich/Name/Plätze angeglichen – alles über saveTable, also einzeln protokolliert.
+export const PLAN_TYPES = ['table', 'counter', 'entrance', 'slot', 'zone'];
+const SEAT_SIDES = ['unten', 'oben', 'links', 'rechts'];
+export const getPlan = () => {
+  const r = one("SELECT value FROM settings WHERE key='floor_plan'");
+  return r ? JSON.parse(r.value) : { areas: [] };
+};
+// Alle buchbaren Plätze eines Elements: [{ number, name, seats }]
+export function planSpots(el) {
+  if (el.type === 'table') return [{ number: el.number, name: el.label || null, seats: el.seats }];
+  if (el.type === 'counter') return Array.from({ length: el.seat_count }, (_, i) => ({ number: el.seat_start + i, name: `${el.label || 'Tresen'} ${i + 1}`, seats: 1 }));
+  return [];
+}
+function normPlan(p) {
+  if (!p || !Array.isArray(p.areas)) fail(400, 'Ungültiger Tischplan');
+  if (p.areas.length > 10) fail(400, 'Höchstens 10 Bereiche');
+  const names = new Set();
+  const nums = new Map();
+  const areas = p.areas.map((a) => {
+    const name = str(a.name, 'einen Namen für den Bereich', { max: 30 });
+    if (names.has(name.toLowerCase())) fail(400, `Bereich „${name}“ gibt es doppelt`);
+    names.add(name.toLowerCase());
+    const W = int(a.w ?? 1200, 'Breite', { min: 400, max: 4000 });
+    const H = int(a.h ?? 800, 'Höhe', { min: 300, max: 4000 });
+    if (!Array.isArray(a.elements) || a.elements.length > 300) fail(400, 'Ungültige Elemente');
+    const elements = a.elements.map((e, i) => {
+      if (!PLAN_TYPES.includes(e.type)) fail(400, 'Unbekanntes Element');
+      const w = int(e.w, 'Breite', { min: 20, max: W });
+      const hh = int(e.h, 'Höhe', { min: 20, max: H });
+      const o = {
+        id: String(e.id || `e${i}`).slice(0, 24), type: e.type,
+        shape: ['rect', 'square', 'circle'].includes(e.shape) ? e.shape : 'rect',
+        x: Math.min(Math.max(int(e.x, 'Position'), 0), W - w), y: Math.min(Math.max(int(e.y, 'Position'), 0), H - hh), w, h: hh,
+        label: e.label ? String(e.label).trim().slice(0, 30) : '',
+      };
+      if (o.shape !== 'rect') o.h = o.w = Math.min(w, hh);
+      if (e.type === 'table') {
+        o.number = int(e.number, 'Tischnummer', { min: 1, max: 9999 });
+        o.seats = int(e.seats ?? 4, 'Plätze', { min: 0, max: 99 });
+      }
+      if (e.type === 'counter') {
+        o.shape = 'rect';
+        o.seat_count = int(e.seat_count ?? 0, 'Gastplätze', { min: 0, max: 40 });
+        o.seat_start = int(e.seat_start ?? 101, 'erste Platznummer', { min: 1, max: 9999 - o.seat_count });
+        o.seat_side = SEAT_SIDES.includes(e.seat_side) ? e.seat_side : 'unten';
+      }
+      if (e.type === 'zone' && !o.label) o.label = 'Terrasse';
+      for (const s of planSpots(o)) {
+        if (nums.has(s.number)) fail(400, `Nummer ${s.number} ist im Plan doppelt vergeben (${nums.get(s.number)} und ${s.name || 'Tisch ' + s.number})`);
+        nums.set(s.number, s.name || `Tisch ${s.number}`);
+      }
+      return o;
+    });
+    return { name, w: W, h: H, elements };
+  });
+  return { version: 1, areas };
+}
+export function savePlan(actor, b) {
+  requirePerm(actor, 'manage');
+  const plan = normPlan(b);
+  const before = getPlan();
+  return tx(() => {
+    let created = 0;
+    for (const a of plan.areas) {
+      for (const el of a.elements) {
+        for (const s of planSpots(el)) {
+          const t = one('SELECT * FROM dining_tables WHERE number=?', s.number);
+          const want = { number: s.number, area: a.name, name: s.name, seats: s.seats, active: 1 };
+          if (!t) { saveTable(actor, null, want); created++; continue; }
+          if (t.area !== want.area || (t.name || null) !== want.name || t.seats !== want.seats || !t.active) saveTable(actor, t.id, want);
+        }
+      }
+    }
+    if (JSON.stringify(before) !== JSON.stringify(plan)) {
+      run("INSERT INTO settings(key,value) VALUES('floor_plan',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", JSON.stringify(plan));
+      resetSettingsCache();
+      logAdmin(actor, 'PLAN_UPDATED', 'tischplan', null, before, plan);
+    }
+    return { ok: true, plan, tische_neu: created };
+  });
+}
+
 // ---- Benutzer ----------------------------------------------------------------------
 export const listUsers = () => all('SELECT id, personal_nr, name, role, active, created_at, locked_until FROM users ORDER BY personal_nr');
 

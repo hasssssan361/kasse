@@ -2,6 +2,7 @@
 // Protokoll (es gibt keine Funktion zum Ändern oder Löschen von Protokolleinträgen).
 import { $, $$, esc, euro, num, fmtTime, fmtDT, fmtDate, todayStr, h, Api, toast, modal, confirmDialog, debounce, parseEuro, registerOffline, APP_VERSION } from '../shared/core.js';
 import { invoiceHtml } from '../shared/invoice.js';
+import { planEditor } from './plan-editor.js';
 
 registerOffline();
 
@@ -838,7 +839,7 @@ VIEWS.sollist = async (el) => {
 // ---- Verwaltung ----------------------------------------------------------------------
 VIEWS.verwaltung = async (el) => {
   const tab = qs().get('tab') || 'artikel';
-  const T = [['artikel', 'Artikel'], ['kategorien', 'Kategorien'], ['tische', 'Tische'], ['benutzer', 'Benutzer'], ['rollen', 'Rollen & Rechte'], ['einstellungen', 'Einstellungen']];
+  const T = [['artikel', 'Artikel'], ['kategorien', 'Kategorien'], ['plan', 'Tischplan'], ['tische', 'Tische'], ['benutzer', 'Benutzer'], ['rollen', 'Rollen & Rechte'], ['einstellungen', 'Einstellungen']];
   el.innerHTML = `<div class="head"><h1>Verwaltung</h1></div>${!can('manage') ? '<div class="notice">Nur lesender Zugriff – Änderungen erfordern das Recht „Verwaltung“.</div>' : ''}
     <div class="tabs">${T.map(([k, l]) => `<a class="chip ${k === tab ? 'on' : ''}" href="#verwaltung?tab=${k}">${l}</a>`).join('')}</div>
     <p class="small muted">Jede Änderung wird mit Vorher/Nachher im Protokoll als Admin-Eingriff gespeichert. Löschen ist nicht möglich – nur Deaktivieren.</p><div id="vw"></div>`;
@@ -918,6 +919,7 @@ VIEWS.verwaltung = async (el) => {
     addBtn('+ Kategorie', () => saveForm('Neue Kategorie', F, {}, save(null)));
     if (can('manage')) $$('[data-id]', box).forEach((tr) => tr.addEventListener('click', () => { const c = META.categories.find((x) => x.id === Number(tr.dataset.id)); saveForm(`Kategorie: ${c.name}`, F, c, save(c.id)); }));
   }
+  if (tab === 'plan') planEditor(box, { META, api, canEdit: can('manage'), onSaved: reload });
   if (tab === 'tische') {
     const F = [{ k: 'number', l: 'Tischnummer', type: 'number' }, { k: 'name', l: 'Bezeichnung (optional)' }, { k: 'area', l: 'Bereich', def: 'Gastraum' },
       { k: 'seats', l: 'Plätze', type: 'number', def: 4 }, { k: 'active', l: 'Aktiv', type: 'check', def: 1 }];
