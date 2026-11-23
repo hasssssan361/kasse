@@ -111,7 +111,34 @@ Auf dem Smartphone wechselt man oben zwischen **„Artikel“** und **„Bestell
 **Datenschutz (DSGVO):** Das System protokolliert das Verhalten der Mitarbeiter. Diese vorher schriftlich
 informieren (Zweck, gespeicherte Daten, Löschung). Bei Betriebsrat ist dessen Zustimmung nötig. Keine Rechtsberatung.
 
-## 8. Bereitstellung des Installations-Links
+## 8. Update installieren
+
+Updates kommen **automatisch über die App** – nichts neu installieren, nichts deinstallieren.
+**Alle Daten bleiben erhalten** (Verkäufe, Rechnungen, Stornos, Tagesabschlüsse, Protokoll, Mitarbeiter, Artikel, Tische).
+
+1. Gerät **mit dem Internet verbinden** (WLAN).
+2. Die Kasse über das Symbol **„Kasse“** öffnen und ca. **10 Sekunden** warten – das Update wird jetzt im
+   Hintergrund geladen. Die Kasse läuft dabei normal weiter.
+3. Die App **ganz schließen**: Übersicht der geöffneten Apps öffnen (□-Taste oder vom unteren Rand nach oben
+   wischen) und die Kasse wegwischen.
+4. Die Kasse **erneut öffnen**.
+5. **Prüfen:** Unten auf dem Anmeldebildschirm steht die Versionsnummer, nach diesem Update **„Version 2.1“**
+   (im Admin-Bereich links unten „App-Version 2.1“).
+
+Steht dort noch die alte Version (oder gar keine Versionsnummer): Schritte 2–4 wiederholen.
+
+**Tipp:** Updates am besten außerhalb der Öffnungszeiten einspielen und vorher offene Tische abrechnen.
+Nötig ist das nicht – offene Tische bleiben auch beim Update erhalten.
+
+### Neu in Version 2.1
+- **Mit EC zahlen:** Zahlungsart „EC-Karte“ → „Mit EC zahlen“ → Sicherheitsabfrage Ja/Nein. Die Artikel werden
+  storniert und mit dem Vermerk „Mit EC bezahlt“ festgehalten (Admin-Bereich → Stornierungen → Reiter „Mit EC bezahlt“).
+  Frühere Zahlungen mit „EC-Karte“ bleiben unverändert normale Rechnungen.
+- **Varianten:** Beim Anlegen eines Artikels „Hat dieser Artikel Varianten?“ → Ja → „Wie viele Varianten?“ →
+  je Variante Name und Preis. An der Kasse erscheint dann die Auswahl der Variante. Lager je Variante.
+- **Versionsnummer** auf dem Anmeldebildschirm und im Admin-Bereich.
+
+## 9. Bereitstellung des Installations-Links
 
 **Installations-Link: https://hasssssan361.github.io/kasse/**
 
@@ -122,7 +149,7 @@ Updates: Bei jedem Hochladen auf den Zweig `main` führt GitHub automatisch alle
 nur, wenn alle bestehen. Das Gerät lädt das Update beim nächsten Öffnen mit Internet und nutzt es ab dem
 darauffolgenden Start.
 
-## 9. Für Entwickler
+## 10. Für Entwickler
 
 ```powershell
 npm test

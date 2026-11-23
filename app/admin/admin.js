@@ -1,6 +1,6 @@
 // Administrator-Dashboard: eigenständige Anwendung, eigene Anmeldung, nur lesender Zugriff auf das
 // Protokoll (es gibt keine Funktion zum Ändern oder Löschen von Protokolleinträgen).
-import { $, $$, esc, euro, num, fmtTime, fmtDT, fmtDate, todayStr, h, Api, toast, modal, confirmDialog, debounce, parseEuro, registerOffline } from '../shared/core.js';
+import { $, $$, esc, euro, num, fmtTime, fmtDT, fmtDate, todayStr, h, Api, toast, modal, confirmDialog, debounce, parseEuro, registerOffline, APP_VERSION } from '../shared/core.js';
 import { invoiceHtml } from '../shared/invoice.js';
 
 registerOffline();
@@ -120,7 +120,7 @@ async function start() {
     <div class="side-back hidden" id="sideback"></div>
     <div class="layout"><aside class="side" id="side"><div class="brand"><span class="dot"></span>${esc(META.settings.business_name)}</div>
     ${NAV.map(([g, items]) => `<div class="grp">${g}</div>${items.map(([k, l]) => `<a href="#${k}" data-v="${k}">${l}${k === 'warnungen' ? '<span class="badge danger hidden" id="abadge"></span>' : ''}</a>`).join('')}`).join('')}
-    <div class="foot"><span>${esc(ME.name)} · ${esc(ME.role)}</span><label class="row small"><input type="checkbox" id="sound" checked> Ton bei Storno</label>
+    <div class="foot"><span>${esc(ME.name)} · ${esc(ME.role)}</span><span>App-Version ${APP_VERSION}</span><label class="row small"><input type="checkbox" id="sound" checked> Ton bei Storno</label>
     <button class="btn sm" id="pinbtn">PIN ändern</button><button class="btn sm" id="logout">Abmelden und zur Kasse</button></div></aside><main class="content" id="content"></main></div>`;
   $('#pinbtn').addEventListener('click', () => modal({
     title: 'PIN ändern',

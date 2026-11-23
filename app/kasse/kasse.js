@@ -1,7 +1,7 @@
 // Kassen-Oberfläche. Wichtig: Diese Oberfläche protokolliert NICHTS selbst – jede Aktion geht an den
 // Rechenkern im Gerät, der Änderung und Protokolleintrag gemeinsam speichert. Ohne dessen Bestätigung
 // wird nichts als gebucht angezeigt.
-import { $, $$, esc, euro, fmtTime, fmtDT, h, Api, toast, modal, confirmDialog, debounce, parseEuro, uuid, registerOffline } from '../shared/core.js';
+import { $, $$, esc, euro, fmtTime, fmtDT, h, Api, toast, modal, confirmDialog, debounce, parseEuro, uuid, registerOffline, APP_VERSION } from '../shared/core.js';
 import { invoiceHtml } from '../shared/invoice.js';
 
 registerOffline();
@@ -74,7 +74,8 @@ function showLogin(msg) {
       <button data-k="del">⌫</button><button data-k="0">0</button><button data-k="ok" class="go">➜</button></div>
     <div class="login-err" id="lerr">${esc(msg || '')}</div>
     <a class="btn ghost admin-link" href="../admin/">Admin-Bereich</a>
-    <div id="install"></div></div></div>`;
+    <div id="install"></div>
+    <div class="muted small" style="text-align:center;margin-top:10px">Version ${APP_VERSION}</div></div></div>`;
   renderInstall();
   const disp = () => {
     $('#lstep').textContent = step === 'nr' ? 'Personalnummer' : 'PIN';
