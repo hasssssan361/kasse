@@ -115,3 +115,4 @@ main.view { overflow: hidden; min-height: 0; }
 
 /* Zugang zum Admin-Bereich auf dem Anmeldebildschirm */
 .admin-link { display: flex; margin-top: 6px; width: 100%; color: var(--text-3); font-weight: 600; text-decoration: none; }
+.install-box { display: block; width: 100%; margin-top: 10px; text-align: center; }

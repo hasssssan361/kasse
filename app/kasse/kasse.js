@@ -1,5 +1,5 @@
-// Kassen-Oberfläche. Wichtig: Diese Oberfläche protokolliert NICHTS selbst – jede Aktion wird an den
-// Server geschickt, der Änderung und Audit-Eintrag gemeinsam speichert. Ohne Serverbestätigung
+// Kassen-Oberfläche. Wichtig: Diese Oberfläche protokolliert NICHTS selbst – jede Aktion geht an den
+// Rechenkern im Gerät, der Änderung und Protokolleintrag gemeinsam speichert. Ohne dessen Bestätigung
 // wird nichts als gebucht angezeigt.
 import { $, $$, esc, euro, fmtTime, fmtDT, h, Api, toast, modal, confirmDialog, debounce, parseEuro, uuid, registerOffline } from '../shared/core.js';
 import { invoiceHtml } from '../shared/invoice.js';
@@ -28,6 +28,36 @@ function setConn(ok) {
   } else if (ok && ov) ov.remove();
 }
 
+// ---- Als App installieren ---------------------------------------------------------
+// Chrome meldet über „beforeinstallprompt“, dass die Kasse installiert werden kann – dann zeigen wir
+// einen eigenen Knopf. Läuft sie schon als installierte App, erscheint nichts.
+let installEvent = null;
+const isInstalled = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvent = e; renderInstall(); });
+addEventListener('appinstalled', () => { installEvent = null; renderInstall(true); });
+function renderInstall(justInstalled) {
+  const box = $('#install');
+  if (!box) return;
+  if (justInstalled) {
+    box.innerHTML = '<div class="notice ok install-box">Installiert. Bitte die Kasse ab jetzt über das Symbol „Kasse“ auf dem Startbildschirm öffnen.</div>';
+    return;
+  }
+  if (isInstalled()) { box.innerHTML = ''; return; }
+  if (installEvent) {
+    box.innerHTML = '<button class="btn primary install-box" id="instbtn">Als App installieren</button>';
+    $('#instbtn').addEventListener('click', async () => {
+      const ev = installEvent;
+      installEvent = null;
+      ev.prompt();
+      const { outcome } = await ev.userChoice.catch(() => ({ outcome: 'dismissed' }));
+      if (outcome !== 'accepted') renderInstall();
+    });
+  } else {
+    box.innerHTML = `<div class="notice info install-box small">Noch nicht installiert? In <b>Chrome</b> oben rechts auf <b>⋮</b> tippen
+      → <b>„App installieren“</b> (oder „Zum Startbildschirm hinzufügen“).</div>`;
+  }
+}
+
 // ---- Anmeldung ---------------------------------------------------------------------
 function showLogin(msg) {
   api.closeStream();
@@ -43,7 +73,9 @@ function showLogin(msg) {
     <div class="keypad" id="lpad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<button data-k="${n}">${n}</button>`).join('')}
       <button data-k="del">⌫</button><button data-k="0">0</button><button data-k="ok" class="go">➜</button></div>
     <div class="login-err" id="lerr">${esc(msg || '')}</div>
-    <a class="btn ghost admin-link" href="../admin/">Admin-Bereich</a></div></div>`;
+    <a class="btn ghost admin-link" href="../admin/">Admin-Bereich</a>
+    <div id="install"></div></div></div>`;
+  renderInstall();
   const disp = () => {
     $('#lstep').textContent = step === 'nr' ? 'Personalnummer' : 'PIN';
     $('#ldisp').textContent = step === 'nr' ? nr || ' ' : '•'.repeat(pin.length) || ' ';

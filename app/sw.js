@@ -1,6 +1,6 @@
 // Automatisch erzeugt von tools/build-sw.mjs – nicht von Hand bearbeiten.
 // Hält alle App-Dateien im Gerät vor, damit die Kasse ohne Internet startet.
-const VERSION = '7dbf9c18ba35';
+const VERSION = 'b9e5b1e4df4f';
 const CACHE = 'kasse-' + VERSION;
 const FILES = [
   "./",
