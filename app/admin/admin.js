@@ -854,6 +854,33 @@ VIEWS.verwaltung = async (el) => {
       try { await api.post('/api/admin/demo-data', {}); toast('Beispieldaten geladen', 'ok'); reload(); } catch (e) { toast(e.message, 'error'); }
     });
   }
+  // Getränkekarte (app/data/artikelliste.json) übernehmen – nur angezeigt, solange daraus noch Artikel fehlen
+  if (can('manage') && (tab === 'artikel' || tab === 'kategorien')) {
+    try {
+      const list = await (await fetch(new URL('../data/artikelliste.json', location.href), { cache: 'no-cache' })).json();
+      const plan = await api.post('/api/admin/import-articles', { list, dryRun: true });
+      if (plan.neue_artikel.length) {
+        const n = h(`<div class="notice info" style="margin-bottom:12px"><b>${esc(list.name)}</b> (Stand ${esc(fmtDate(list.stand))}): ${plan.neue_artikel.length} Artikel
+          ${plan.neue_kategorien.length ? `und ${plan.neue_kategorien.length} Kategorien ` : ''}können übernommen werden.
+          <div style="margin-top:8px"><button class="btn sm primary" id="imp">Ansehen und übernehmen</button></div></div>`);
+        $('#vw').before(n);
+        $('#imp', n).addEventListener('click', () => {
+          const byCat = {};
+          for (const a of plan.neue_artikel) (byCat[a.kategorie] ||= []).push(a);
+          const price = (a) => (a.varianten ? a.varianten.map((p, i) => (typeof p === 'object' ? `${esc(p.name)} ${euro(p.preis)}` : `${['2 cl', 'LD', 'Fl.'][i] || ''} ${euro(p)}`)).join(' · ') : euro(a.preis));
+          const body = h(`<div><p>Es werden nur fehlende Einträge angelegt – vorhandene Artikel mit gleichem Namen bleiben unverändert${plan.uebersprungen.length ? ` (${plan.uebersprungen.length} übersprungen)` : ''}.
+            Jede Anlage wird im Protokoll gespeichert.</p>
+            ${Object.entries(byCat).map(([k, arr]) => `<h3 style="margin:12px 0 4px">${esc(k)}${plan.neue_kategorien.includes(k) ? ' <span class="badge">neue Kategorie</span>' : ''}</h3>
+              ${arr.map((a) => `<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--border)"><span>${esc(a.name)}</span><span class="small" style="text-align:right">${price(a)}</span></div>`).join('')}`).join('')}</div>`);
+          modal({ title: 'Getränkekarte übernehmen', wide: true, body, actions: [{ label: 'Abbrechen' }, { label: `${plan.neue_artikel.length} Artikel übernehmen`, kind: 'primary', onClick: async () => {
+            const r = await api.post('/api/admin/import-articles', { list });
+            toast(`${r.neue_artikel.length} Artikel übernommen`, 'ok');
+            reload();
+          } }] });
+        });
+      }
+    } catch (e) { console.warn('Artikelliste nicht verfügbar', e); }
+  }
   const saveForm = (title, fields, values, onSave) => {
     const body = h(`<div class="fields">${fields.map((f) => {
       const v = values[f.k] ?? f.def ?? '';

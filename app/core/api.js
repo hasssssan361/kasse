@@ -27,7 +27,7 @@ const TYPE_LABEL = {
   TABLE_CREATED: 'Tisch angelegt', TABLE_UPDATED: 'Tisch geändert', USER_CREATED: 'Benutzer angelegt', USER_UPDATED: 'Benutzer geändert',
   PIN_CHANGED: 'PIN geändert', ROLE_UPDATED: 'Rechte geändert', SETTINGS_UPDATED: 'Einstellungen geändert', ALERT_ACKNOWLEDGED: 'Warnung geprüft',
   EXPORT_CREATED: 'Export erstellt', INTEGRITY_CHECK: 'Integritätsprüfung', BACKUP_CREATED: 'Sicherung erstellt', ANCHOR_CREATED: 'Sicherungsanker',
-  SYSTEM_START: 'App gestartet', DEMO_DATA_CREATED: 'Beispieldaten angelegt', CLOSING_DELETED: 'Tagesabschluss gelöscht',
+  SYSTEM_START: 'App gestartet', DEMO_DATA_CREATED: 'Beispieldaten angelegt', ARTICLES_IMPORTED: 'Artikelliste übernommen', CLOSING_DELETED: 'Tagesabschluss gelöscht',
 };
 export { TYPE_LABEL };
 
@@ -138,6 +138,7 @@ r('GET', '/api/admin/integrity', 'dashboard', (a) => {
 r('POST', '/api/admin/anchor', 'dashboard', (a) => createAnchor(a, 'manuell'));
 r('POST', '/api/admin/closings/:id/delete', 'manage', (a, p, _q, b) => adm.deleteOldestClosing(a, p.id, b));
 r('POST', '/api/admin/demo-data', 'manage', (a) => loadDemoData(a));
+r('POST', '/api/admin/import-articles', 'manage', (a, _p, _q, b) => adm.importArticles(a, b.list, { dryRun: !!b.dryRun }));
 
 // Verwaltung
 r('POST', '/api/admin/categories', 'manage', (a, _p, _q, b) => adm.saveCategory(a, null, b));

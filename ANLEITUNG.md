@@ -130,6 +130,12 @@ Steht dort noch die alte Version (oder gar keine Versionsnummer): Schritte 2–4
 **Tipp:** Updates am besten außerhalb der Öffnungszeiten einspielen und vorher offene Tische abrechnen.
 Nötig ist das nicht – offene Tische bleiben auch beim Update erhalten.
 
+### Neu in Version 2.2
+- **Getränkekarte übernehmen** (inkl. Kategorie „3 Nächte“ mit Donnerstag, Freitag, Girls Night): Admin-Bereich → Verwaltung → Artikel → Hinweis „Getränkekarte … können übernommen
+  werden“ → „Ansehen und übernehmen“. Es werden nur fehlende Kategorien und Artikel angelegt; vorhandene Artikel mit
+  gleichem Namen bleiben unverändert. Jede Anlage steht im Protokoll. Der Hinweis verschwindet, sobald alles übernommen ist.
+- Lange Fenster (z. B. diese Vorschau) scrollen auf dem Handy jetzt richtig, die Knöpfe bleiben unten sichtbar.
+
 ### Neu in Version 2.1
 - **Mit EC zahlen:** Zahlungsart „EC-Karte“ → „Mit EC zahlen“ → Sicherheitsabfrage Ja/Nein. Die Artikel werden
   storniert und mit dem Vermerk „Mit EC bezahlt“ festgehalten (Admin-Bereich → Stornierungen → Reiter „Mit EC bezahlt“).
