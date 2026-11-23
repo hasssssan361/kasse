@@ -130,6 +130,10 @@ Steht dort noch die alte Version (oder gar keine Versionsnummer): Schritte 2–4
 **Tipp:** Updates am besten außerhalb der Öffnungszeiten einspielen und vorher offene Tische abrechnen.
 Nötig ist das nicht – offene Tische bleiben auch beim Update erhalten.
 
+### Neu in Version 2.4
+- **Tischplan auf dem Touchscreen:** Objekte lassen sich mit dem Finger in einem Zug greifen, verschieben und in der
+  Größe ändern. Leere Fläche mit dem Finger ziehen = Ansicht verschieben.
+
 ### Neu in Version 2.3 – Tischplan
 - **Admin-Bereich → Verwaltung → Tischplan:** oben Elemente hinzufügen – Tische als ▭ Rechteck, ◻ Quadrat oder
   ◯ Kreis, **Tresen** (mit Gastplätzen), **Eingang** (grün), **Spielautomaten** (◻/▯, lila gestreift) und

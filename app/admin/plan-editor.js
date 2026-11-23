@@ -63,7 +63,7 @@ export function planEditor(box, { META, api, canEdit, onSaved }) {
       <button class="btn sm" data-add="slot" data-shape="rect">▯ Automat</button>
       <button class="btn sm" data-add="zone">Terrasse / Bereich</button></div>` : ''}
     <div class="row" style="margin-bottom:6px;justify-content:space-between">
-      <span class="small muted">${canEdit ? 'Antippen zum Auswählen, ziehen zum Verschieben, blauer Punkt = Größe ändern.' : 'Nur ansehen – Ändern erfordert das Recht „Verwaltung“.'}</span>
+      <span class="small muted">${canEdit ? 'Objekt mit dem Finger ziehen = verschieben, blauer Punkt = Größe ändern, leere Fläche ziehen = Ansicht verschieben.' : 'Nur ansehen – Ändern erfordert das Recht „Verwaltung“.'}</span>
       <span class="row"><button class="btn sm" id="pzo" aria-label="Verkleinern">−</button><button class="btn sm" id="pzi" aria-label="Vergrößern">+</button></span></div>
     <div class="plan-wrap"><div id="pcv"></div></div>
     <div id="pprops" style="margin-top:10px"></div>
@@ -131,23 +131,49 @@ export function planEditor(box, { META, api, canEdit, onSaved }) {
 
   function bind() {
     if (!canEdit) return;
+    // Touch: Die Zeichenfläche gehört beim Bearbeiten ganz dem Finger (touch-action: none, siehe CSS),
+    // sonst wertet der Browser die Bewegung als Scrollen und bricht das Ziehen ab.
+    // Leere Fläche ziehen = Ansicht verschieben; Element ziehen = Element verschieben.
+    // Wichtig: Während des Ziehens wird das Element unter dem Finger nicht neu erzeugt, nur verschoben.
     let drag = null;
     let raf = 0;
+    const wrap = svg.closest('.plan-wrap');
+    svg.addEventListener('contextmenu', (ev) => ev.preventDefault());
+    svg.addEventListener('touchmove', (ev) => ev.preventDefault(), { passive: false });
     svg.addEventListener('pointerdown', (ev) => {
+      if (drag) return; // zweiter Finger: ignorieren
+      ev.preventDefault();
+      try { svg.setPointerCapture(ev.pointerId); } catch {}
       const hdl = ev.target.closest('.hdl');
       const g = ev.target.closest('.pe');
-      if (!hdl && !g) { if (sel) { sel = null; draw(); drawProps(); } return; }
-      ev.preventDefault();
-      if (g && g.dataset.id !== sel) { sel = g.dataset.id; draw(); drawProps(); }
-      const e = elOf(sel);
+      if (!hdl && !g) {
+        drag = { mode: 'pan', id: ev.pointerId, sx: ev.clientX, sy: ev.clientY, sl: wrap.scrollLeft, wy: scrollY, moved: false };
+        return;
+      }
+      const id = hdl ? sel : g.dataset.id;
+      const e = elOf(id);
       if (!e) return;
-      const p = toPlan(ev);
-      drag = { mode: hdl ? 'size' : 'move', p0: p, o: { ...e }, moved: false };
-      svg.setPointerCapture(ev.pointerId);
+      const node = hdl ? null : g;
+      drag = { mode: hdl ? 'size' : 'move', id: ev.pointerId, eid: id, node, p0: toPlan(ev), o: { ...e }, moved: false, wasSel: id === sel };
+      if (!hdl && id !== sel) {
+        // Auswahl nur optisch markieren – das Element unter dem Finger bleibt dasselbe DOM-Element
+        sel = id;
+        $$('.selbox,.hdl', svg).forEach((n) => n.remove());
+        node.classList.add('sel');
+      }
     });
     svg.addEventListener('pointermove', (ev) => {
-      if (!drag) return;
-      const e = elOf(sel);
+      if (!drag || ev.pointerId !== drag.id) return;
+      ev.preventDefault();
+      if (drag.mode === 'pan') {
+        const dx = ev.clientX - drag.sx, dy = ev.clientY - drag.sy;
+        if (!drag.moved && Math.hypot(dx, dy) < 6) return;
+        drag.moved = true;
+        wrap.scrollLeft = drag.sl - dx;
+        scrollTo(scrollX, drag.wy - dy);
+        return;
+      }
+      const e = elOf(drag.eid);
       const A = area();
       const p = toPlan(ev);
       const dx = p.x - drag.p0.x, dy = p.y - drag.p0.y;
@@ -156,6 +182,10 @@ export function planEditor(box, { META, api, canEdit, onSaved }) {
       if (drag.mode === 'move') {
         e.x = Math.min(Math.max(snap(drag.o.x + dx), 0), A.w - e.w);
         e.y = Math.min(Math.max(snap(drag.o.y + dy), 0), A.h - e.h);
+        // Nur verschieben (transform), nicht neu zeichnen
+        drag.node.setAttribute('transform', `translate(${e.x - drag.o.x} ${e.y - drag.o.y})`);
+        $$('.selbox,.hdl', svg).forEach((n) => n.remove());
+        return;
       } else {
         const min = e.type === 'counter' ? 40 : 30;
         let w = Math.max(min, snap(drag.o.w + dx)), hh = Math.max(min, snap(drag.o.h + dy));
@@ -165,7 +195,14 @@ export function planEditor(box, { META, api, canEdit, onSaved }) {
       }
       if (!raf) raf = requestAnimationFrame(() => { raf = 0; draw(); });
     });
-    const end = () => { if (drag?.moved) { setDirty(); draw(); drawProps(); } drag = null; };
+    const end = (ev) => {
+      if (!drag || ev.pointerId !== drag.id) return;
+      const d = drag;
+      drag = null;
+      if (d.mode === 'pan') { if (!d.moved && sel) { sel = null; draw(); drawProps(); } return; }
+      if (d.moved) setDirty();
+      draw(); drawProps(); // jetzt (Finger ist weg) sauber neu zeichnen: Auswahlrahmen, Anfasser, Eigenschaften
+    };
     svg.addEventListener('pointerup', end);
     svg.addEventListener('pointercancel', end);
   }

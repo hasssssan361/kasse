@@ -49,7 +49,7 @@ function getWorker() {
 
 // Versionsnummer der App – wird auf dem Anmeldebildschirm und im Admin-Bereich angezeigt,
 // damit man nach einem Update sieht, dass die neue Version läuft. Bei jeder Veröffentlichung erhöhen.
-export const APP_VERSION = '2.3';
+export const APP_VERSION = '2.4';
 
 // Offline-Betrieb: Service Worker registrieren (liegt im Hauptordner der App)
 export function registerOffline() {

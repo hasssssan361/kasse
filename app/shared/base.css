@@ -153,7 +153,9 @@ table.data tr.storno td { background: color-mix(in srgb, var(--danger-soft) 60%,
 .plan-svg .floor { fill: var(--surface-2); }
 .plan-svg .gl { fill: none; stroke: var(--border); stroke-width: 1; }
 .plan-svg .pe { cursor: pointer; }
-.plan-svg.edit .pe, .plan-svg.edit .hdl { touch-action: none; cursor: grab; }
+.plan-svg.edit { touch-action: none; -webkit-touch-callout: none; }
+.plan-svg.edit .pe, .plan-svg.edit .hdl { cursor: grab; }
+.plan-svg.edit .pe.sel .shp { stroke: var(--accent); stroke-width: 4; }
 .pe-table .shp { fill: var(--surface); stroke: var(--text-3); stroke-width: 2.5; }
 .pe-table text { fill: var(--text); }
 .pe-table .ts { font-weight: 600; fill: var(--text-2); }
