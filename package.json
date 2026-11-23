@@ -1,6 +1,6 @@
 {
   "name": "kassensystem",
-  "version": "2.0.0",
+  "version": "1.0.0",
   "description": "Manipulationsgeschütztes Kassensystem als App (PWA) – läuft komplett im Gerät, ohne Server",
   "type": "module",
   "private": true,

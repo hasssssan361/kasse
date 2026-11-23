@@ -1,5 +1,7 @@
 # Kasse – Anleitung
 
+**Version 1.0.0**
+
 Manipulationsgeschütztes Kassensystem als **App für ein Android-Tablet oder -Smartphone**.
 Alles läuft **im Gerät**: kein Server, kein Laptop, kein Fernzugang, im Betrieb **kein Internet nötig**, **kostenlos**.
 
@@ -35,7 +37,7 @@ Alles läuft **im Gerät**: kein Server, kein Laptop, kein Fernzugang, im Betrie
 
 Die Kasse wird **leer** ausgeliefert: keine Artikel, keine Tische, keine Mitarbeiter.
 
-1. **Gerät freischalten:** Gerätekennung an den Anbieter schicken und den erhaltenen Freischaltcode eingeben (siehe „Neu in Version 3.0“).
+1. **Gerät freischalten:** Gerätekennung an den Anbieter schicken und den erhaltenen Freischaltcode eingeben (siehe „Funktionen im Überblick“).
 2. **Ersteinrichtung:** Direkt danach eigene Zugangsdaten festlegen: Personalnummer, Name, PIN (6–12 Ziffern), PIN wiederholen.
    Das geht nur einmal. Später ist alles unter **Verwaltung → Benutzer** änderbar. Die PIN bitte gut merken.
 3. Mit diesen Daten auf dem Anmeldebildschirm unten **„Admin-Bereich“** antippen und anmelden.
@@ -123,89 +125,77 @@ Updates kommen **automatisch über die App** – nichts neu installieren, nichts
 3. Die App **ganz schließen**: Übersicht der geöffneten Apps öffnen (□-Taste oder vom unteren Rand nach oben
    wischen) und die Kasse wegwischen.
 4. Die Kasse **erneut öffnen**.
-5. **Prüfen:** Unten auf dem Anmeldebildschirm steht die Versionsnummer, nach diesem Update **„Version 2.1“**
-   (im Admin-Bereich links unten „App-Version 2.1“).
+5. **Prüfen:** Unten auf dem Anmeldebildschirm steht die Versionsnummer (z. B. **„Version 1.0.0“**),
+   im Admin-Bereich links unten „App-Version …“. Nach einem Update steht dort die neue Nummer.
 
-Steht dort noch die alte Version (oder gar keine Versionsnummer): Schritte 2–4 wiederholen.
+Steht dort noch die alte Version: Schritte 2–4 wiederholen.
 
 **Tipp:** Updates am besten außerhalb der Öffnungszeiten einspielen und vorher offene Tische abrechnen.
 Nötig ist das nicht – offene Tische bleiben auch beim Update erhalten.
 
-### Neu in Version 3.1 – Blanko-Auslieferung
-- Neue Geräte starten **leer** (keine Getränkekarte, keine Beispieldaten).
-- **Ersteinrichtung** direkt nach der Freischaltung: Der Kunde legt einmalig seine eigenen Admin-Zugangsdaten fest.
-  Den früheren Standard-Zugang 1 / 123456 gibt es auf neuen Geräten nicht mehr.
-- Bereits benutzte Geräte sind nicht betroffen: Daten und Zugangsdaten bleiben, wie sie sind.
+## Funktionen im Überblick (Version 1.0.0)
 
-### Neu in Version 3.0 – Freischaltung pro Gerät und Stammdaten-Übertragung
-**Wichtig beim Update auf 3.0:** Danach zeigt jedes Gerät einmalig **„Gerät freischalten“** mit einer Gerätekennung.
-Die Kasse ist bis zur Freischaltung gesperrt; **alle Daten bleiben erhalten**.
+### Auslieferung, Freischaltung und Ersteinrichtung
+- Die Kasse wird **leer** ausgeliefert (keine Artikel, Tische oder Mitarbeiter).
+- **Freischaltung pro Gerät:** Beim ersten Start erscheint **„Gerät freischalten“** mit einer Gerätekennung. Diese an
+  den Anbieter schicken („Kopieren“ oder „Senden …“), den erhaltenen Freischaltcode einfügen und „Freischalten“ tippen.
+  - Der Code gilt nur für dieses eine Gerät; jedes weitere Gerät braucht einen eigenen Code.
+  - Löscht man die App-Daten oder setzt das Gerät zurück, entsteht eine neue Kennung, und das Gerät muss neu freigeschaltet werden.
+  - Eine Lizenz kann befristet sein („Gültig bis“). Nach Ablauf sperrt die Kasse, bis ein neuer Code eingegeben wird.
+    Die Daten bleiben erhalten. Neuen Code eingeben: Verwaltung → „Gerät & Übertragung“.
+- **Ersteinrichtung:** Direkt nach der Freischaltung einmalig die eigenen Admin-Zugangsdaten festlegen
+  (Personalnummer, Name, PIN). Später ist alles unter Verwaltung → Benutzer änderbar.
+- **Für den Anbieter:** Freischaltcodes entstehen mit dem Freischalt-Werkzeug im Ordner `kassen-lizenz`. Der Ordner liegt
+  nur auf dem PC des Anbieters und wird niemals hochgeladen; Näheres steht in der LIESMICH.txt dort.
 
-- **Freischaltung (für Betriebe):** Gerätekennung an den Anbieter schicken („Kopieren“ oder „Senden …“). Den
-  erhaltenen Freischaltcode einfügen und „Freischalten“ tippen. Der Code gilt nur für dieses eine Gerät.
-  Jedes weitere Gerät braucht einen eigenen Code. Löscht man die App-Daten oder setzt das Gerät zurück, entsteht
-  eine neue Kennung, und das Gerät muss neu freigeschaltet werden.
-- **Freischaltung (für den Anbieter):** mit dem Freischalt-Werkzeug im Ordner `kassen-lizenz` (nur auf dem PC des
-  Anbieters, niemals hochladen; siehe LIESMICH.txt dort). Optional mit „Gültig bis“ (z. B. Abo). Nach Ablauf sperrt
-  die Kasse, bis ein neuer Code eingegeben wird.
-- **Stammdaten übertragen:** Admin-Bereich → Verwaltung → **„Gerät & Übertragung“**.
-  1. Auf dem eingerichteten Gerät ein Übertragungs-Passwort vergeben → „Stammdaten exportieren“. Die Datei landet
-     unter „Downloads“.
-  2. Die Datei z. B. per WhatsApp, E-Mail oder USB auf das andere Gerät bringen. Das Passwort getrennt mitteilen.
-  3. Auf dem anderen Gerät: Datei auswählen → Passwort → „Datei prüfen …“ → Vorschau → „1:1 übernehmen“.
+### Stammdaten auf weitere Geräte übertragen
+Admin-Bereich → Verwaltung → **„Gerät & Übertragung“**:
+1. Auf dem eingerichteten Gerät ein Übertragungs-Passwort vergeben → „Stammdaten exportieren“. Die Datei landet
+   unter „Downloads“.
+2. Die Datei z. B. per WhatsApp, E-Mail oder USB auf das andere Gerät bringen. Das Passwort getrennt mitteilen.
+3. Auf dem anderen Gerät: Datei auswählen → Passwort → „Datei prüfen …“ → Vorschau → „1:1 übernehmen“.
 
-  Übertragen werden Kategorien, Artikel mit Varianten, Tische, Tischplan, Mitarbeiter mit PIN, Rollenrechte und
-  Einstellungen. Was in der Datei fehlt, wird auf dem Zielgerät **deaktiviert, nie gelöscht**. Belegte Tische und
-  das eigene Admin-Konto bleiben aktiv. Buchungen, Rechnungen und das Protokoll bleiben auf jedem Gerät für sich,
-  jedes Gerät arbeitet weiter eigenständig. Die Datei ist verschlüsselt, weil sie die PINs enthält.
-- **Artikelsuche an der Kasse:** Im geöffneten Tisch oben „Artikel suchen …“ eintippen, z. B. „jager“ für
-  Jägermeister. Gesucht wird in allen Kategorien; Groß-/Kleinschreibung und Umlaute sind egal. Auch die
-  Artikelnummer und Variantennamen werden gefunden. Mit ✕ wird die Suche geleert.
-- **Tresen mit Plätzen an allen Seiten:** Im Tischplan beim Tresen „Plätze unten / rechts / oben / links“ einstellen.
-- **Nummern frei wählbar:** Tische, Tresenplätze und Automaten werden gemeinsam fortlaufend nummeriert. Neue Plätze
-  bekommen automatisch die nächste freie Nummer. Einen Tresenplatz im Plan antippen, um seine Nummer zu ändern,
-  oder „Alle Plätze fortlaufend nummerieren ab …“ nutzen. Jede Nummer darf nur einmal vorkommen.
-- **Automaten buchbar:** Spielautomaten haben jetzt eine Nummer (im „Bildschirm“) und können an der Kasse wie ein
-  Tisch geöffnet und bebucht werden. Bestehende Pläne: Die Automaten bekommen beim Öffnen des Tischplans
-  automatisch eine Nummer. Danach einmal **„Plan speichern“** tippen.
-- **Gästename am Tisch:** Im geöffneten Tisch oben **„+ Name“** tippen, z. B. „Familie Yilmaz“, und speichern.
-  Der Name erscheint im Tisch, im Plan, in der Tischliste und in der Live-Übersicht des Admin-Bereichs.
-  Er gilt für die aktuelle Belegung und ist nach dem Abschluss des Tisches weg. Ändern oder Entfernen über
-  „✎ Name“. Jede Änderung wird protokolliert.
+Übertragen werden Kategorien, Artikel mit Varianten, Tische, Tischplan, Mitarbeiter mit PIN, Rollenrechte und
+Einstellungen. Was in der Datei fehlt, wird auf dem Zielgerät **deaktiviert, nie gelöscht**. Belegte Tische und
+das eigene Admin-Konto bleiben aktiv. Buchungen, Rechnungen und Protokoll bleiben auf jedem Gerät für sich; jedes
+Gerät arbeitet eigenständig. Die Datei ist verschlüsselt, weil sie die PINs enthält.
 
-### Neu in Version 2.4
-- **Tischplan auf dem Touchscreen:** Objekte lassen sich mit dem Finger in einem Zug greifen, verschieben und in der
-  Größe ändern. Leere Fläche mit dem Finger ziehen = Ansicht verschieben.
-
-### Neu in Version 2.3 – Tischplan
-- **Admin-Bereich → Verwaltung → Tischplan:** oben Elemente hinzufügen – Tische als ▭ Rechteck, ◻ Quadrat oder
-  ◯ Kreis, **Tresen** (mit Gastplätzen), **Eingang** (grün), **Spielautomaten** (◻/▯, lila gestreift) und
-  **Terrasse / Bereich** (gestrichelte Fläche).
-- **Bedienung:** Element antippen = auswählen · ziehen = verschieben · blauer Punkt = Größe ändern. Unten stehen
-  Nummer, Plätze, Bezeichnung, Form, „Drehen 90°“, „Duplizieren“ und „Entfernen“. Mit **− / +** zoomen.
-- **Tresen:** Anzahl der Gastplätze, Nummer des 1. Platzes (z. B. 101) und die Seite (unten/oben/links/rechts)
-  einstellbar. Jeder Gastplatz ist an der Kasse buchbar wie ein Tisch („Tresen 1“, „Tresen 2“ …).
+### Tischplan
+- **Admin-Bereich → Verwaltung → Tischplan:** oben Elemente hinzufügen:
+  - Tische als ▭ Rechteck, ◻ Quadrat oder ◯ Kreis
+  - **Tresen** mit Gastplätzen
+  - **Eingang** (grün)
+  - **Spielautomaten** (◻/▯, lila gestreift)
+  - **Terrasse / Bereich** (gestrichelte Fläche)
+- **Bedienung (auch mit dem Finger):** Objekt antippen und ziehen = verschieben, blauer Punkt = Größe ändern, leere
+  Fläche ziehen = Ansicht verschieben, **− / +** = zoomen. Unten stehen Nummer, Plätze, Bezeichnung, Form,
+  „Drehen 90°“, „Duplizieren“ und „Entfernen“.
+- **Tresen:** Plätze an allen vier Seiten einstellbar („Plätze unten / rechts / oben / links“). Jeder Gastplatz ist
+  an der Kasse buchbar wie ein Tisch.
+- **Spielautomaten** haben eine Nummer (im „Bildschirm“) und sind an der Kasse wie ein Tisch buchbar.
+- **Nummern:** Tische, Tresenplätze und Automaten werden gemeinsam fortlaufend nummeriert; neue Plätze bekommen die
+  nächste freie Nummer. Einen Tresenplatz antippen, um seine Nummer zu ändern, oder „Alle Plätze fortlaufend
+  nummerieren ab …“ nutzen. Jede Nummer darf nur einmal vorkommen.
 - **Mehrere Bereiche:** „+ Bereich“ (z. B. „Terrasse“). Den aktiven Bereich noch einmal antippen, um ihn
   umzubenennen, seine Größe zu ändern oder ihn zu entfernen.
-- **„Plan speichern“:** Fehlende Tische und Tresenplätze werden dabei automatisch angelegt (protokolliert).
-  Vorhandene Tische mit gleicher Nummer werden übernommen. Ein aus dem Plan entfernter Tisch bleibt bestehen und kann
-  unter „Tische“ deaktiviert werden. Spielautomaten, Eingang und Terrassenfläche sind nicht buchbar.
-- **An der Kasse:** Im Bereich mit Plan wird der Plan gezeigt. Freie Tische sind neutral, eigene Tische grün,
-  Tische von Kollegen gelb, jeweils mit offenem Betrag. Oben schaltet man zwischen **Plan** und **Liste** um.
+- **„Plan speichern“** legt fehlende Tische, Tresenplätze und Automaten automatisch an (protokolliert). Ein aus dem
+  Plan entfernter Tisch bleibt bestehen und kann unter „Tische“ deaktiviert werden.
+- **An der Kasse** wird der Plan gezeigt: freie Tische neutral, eigene grün, Tische von Kollegen gelb, jeweils mit
+  offenem Betrag. Oben schaltet man zwischen **Plan** und **Liste** um.
 
-### Neu in Version 2.2
-- *(Ab Version 3.1 entfernt – die Kasse wird leer ausgeliefert.)* **Getränkekarte übernehmen** (inkl. Kategorie „3 Nächte“ mit Donnerstag, Freitag, Girls Night): Admin-Bereich → Verwaltung → Artikel → Hinweis „Getränkekarte … können übernommen
-  werden“ → „Ansehen und übernehmen“. Es werden nur fehlende Kategorien und Artikel angelegt; vorhandene Artikel mit
-  gleichem Namen bleiben unverändert. Jede Anlage steht im Protokoll. Der Hinweis verschwindet, sobald alles übernommen ist.
-- Lange Fenster (z. B. diese Vorschau) scrollen auf dem Handy jetzt richtig, die Knöpfe bleiben unten sichtbar.
-
-### Neu in Version 2.1
+### An der Kasse
+- **Artikelsuche:** Im geöffneten Tisch oben „Artikel suchen …“ eintippen, z. B. „jager“ für Jägermeister.
+  Gesucht wird in allen Kategorien; Groß-/Kleinschreibung und Umlaute sind egal. Auch Artikelnummern und
+  Variantennamen werden gefunden. Mit ✕ wird die Suche geleert.
+- **Gästename am Tisch:** Im geöffneten Tisch oben **„+ Name“** tippen, z. B. „Familie Yilmaz“, und speichern.
+  - Der Name erscheint im Tisch, im Plan, in der Tischliste und in der Live-Übersicht des Admin-Bereichs.
+  - Er gilt für die aktuelle Belegung und ist nach dem Abschluss des Tisches weg.
+  - Ändern oder Entfernen über „✎ Name“. Jede Änderung wird protokolliert.
+- **Varianten:** Beim Anlegen eines Artikels „Hat dieser Artikel Varianten?“ → Ja → „Wie viele Varianten?“ → je
+  Variante Name und Preis (z. B. 2 cl / Longdrink / Flasche). An der Kasse erscheint dann die Auswahl der Variante;
+  das Lager wird je Variante gezählt.
 - **Mit EC zahlen:** Zahlungsart „EC-Karte“ → „Mit EC zahlen“ → Sicherheitsabfrage Ja/Nein. Die Artikel werden
   storniert und mit dem Vermerk „Mit EC bezahlt“ festgehalten (Admin-Bereich → Stornierungen → Reiter „Mit EC bezahlt“).
-  Frühere Zahlungen mit „EC-Karte“ bleiben unverändert normale Rechnungen.
-- **Varianten:** Beim Anlegen eines Artikels „Hat dieser Artikel Varianten?“ → Ja → „Wie viele Varianten?“ →
-  je Variante Name und Preis. An der Kasse erscheint dann die Auswahl der Variante. Lager je Variante.
-- **Versionsnummer** auf dem Anmeldebildschirm und im Admin-Bereich.
 
 ## 9. Bereitstellung des Installations-Links
 
