@@ -1,5 +1,5 @@
 // Verwaltung → „Gerät & Übertragung“: Lizenz dieses Geräts, Stammdaten exportieren und auf einem anderen Gerät einlesen.
-import { $, esc, h, toast, modal, fmtDate, fmtDT } from '../shared/core.js';
+import { $, esc, h, toast, modal, fmtDate, fmtDT, canScanQr, scanLicenseQr, extractLicenseCode } from '../shared/core.js';
 
 const LABEL = { kategorien: 'Kategorien', artikel: 'Artikel', rollen: 'Rollen', mitarbeiter: 'Mitarbeiter', tische: 'Tische', tischplan: 'Tischplan', einstellungen: 'Einstellungen' };
 const list = (o) => Object.entries(o || {}).map(([k, n]) => `${n} ${LABEL[k] || k}`).join(', ') || '–';
@@ -35,10 +35,12 @@ export async function deviceTab(box, { api, canEdit, reload }) {
   if (!canEdit) return;
 
   $('#newlic', box).addEventListener('click', () => {
-    const body = h(`<div><label class="field">Freischaltcode<textarea id="lc" rows="4" spellcheck="false" autocapitalize="off"></textarea></label>
+    const body = h(`<div>${canScanQr() ? '<button class="btn" id="lqs" style="width:100%;margin-bottom:10px">QR-Code scannen</button>' : ''}<label class="field">Freischaltcode<textarea id="lc" rows="4" spellcheck="false" autocapitalize="off"></textarea></label>
       <p class="small muted" style="margin-top:8px">Gerätekennung: <b class="mono">${esc(lic.device_id)}</b></p></div>`);
+    $('#lqs', body)?.addEventListener('click', async () => { const c = await scanLicenseQr(); if (c) $('#lc', body).value = c; });
     modal({ title: 'Freischaltcode eingeben', body, actions: [{ label: 'Abbrechen' }, { label: 'Freischalten', kind: 'primary', onClick: async () => {
-      const r = await api.raw('POST', '/api/license', { code: $('#lc', body).value.trim() });
+      const raw = $('#lc', body).value.trim();
+      const r = await api.raw('POST', '/api/license', { code: extractLicenseCode(raw) || raw });
       toast(`Freigeschaltet für ${r.body.business}`, 'ok'); reload();
     } }] });
   });

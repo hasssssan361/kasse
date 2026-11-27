@@ -1,6 +1,6 @@
 # Kasse – Anleitung
 
-**Version 1.0.1**
+**Version 1.0.2**
 
 Manipulationsgeschütztes Kassensystem als **App für ein Android-Tablet oder -Smartphone**.
 Alles läuft **im Gerät**: kein Server, kein Laptop, kein Fernzugang, im Betrieb **kein Internet nötig**, **kostenlos**.
@@ -129,7 +129,7 @@ Von Hand (z. B. wenn der Hinweis nicht kommt):
 3. Die App **ganz schließen**: Übersicht der geöffneten Apps öffnen (□-Taste oder vom unteren Rand nach oben
    wischen) und die Kasse wegwischen.
 4. Die Kasse **erneut öffnen**.
-5. **Prüfen:** Unten auf dem Anmeldebildschirm steht die Versionsnummer (z. B. **„Version 1.0.1“**),
+5. **Prüfen:** Unten auf dem Anmeldebildschirm steht die Versionsnummer (z. B. **„Version 1.0.2“**),
    im Admin-Bereich links unten „App-Version …“.
 
 Steht dort noch die alte Version: Schritte 2–4 wiederholen.
@@ -137,12 +137,15 @@ Steht dort noch die alte Version: Schritte 2–4 wiederholen.
 **Tipp:** Updates am besten außerhalb der Öffnungszeiten einspielen und vorher offene Tische abrechnen.
 Nötig ist das nicht – offene Tische bleiben auch beim Update erhalten.
 
-## Funktionen im Überblick (Version 1.0.1)
+## Funktionen im Überblick (Version 1.0.2)
 
 ### Auslieferung, Freischaltung und Ersteinrichtung
 - Die Kasse wird **leer** ausgeliefert (keine Artikel, Tische oder Mitarbeiter).
 - **Freischaltung pro Gerät:** Beim ersten Start erscheint **„Gerät freischalten“** mit einer Gerätekennung. Diese an
   den Anbieter schicken („Kopieren“ oder „Senden …“), den erhaltenen Freischaltcode einfügen und „Freischalten“ tippen.
+  - Statt einzufügen geht auch **„QR-Code scannen“**: Kamera auf den QR-Code des Anbieters richten, fertig. Der Knopf
+    erscheint auf Geräten mit Kamera und Barcode-Erkennung (Chrome auf Android). Auch der komplette Freischalt-Link
+    kann eingefügt werden.
   - Der Code gilt nur für dieses eine Gerät; jedes weitere Gerät braucht einen eigenen Code.
   - Löscht man die App-Daten oder setzt das Gerät zurück, entsteht eine neue Kennung, und das Gerät muss neu freigeschaltet werden.
   - Eine Lizenz kann befristet sein („Gültig bis“). Nach Ablauf sperrt die Kasse, bis ein neuer Code eingegeben wird.

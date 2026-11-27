@@ -49,7 +49,7 @@ function getWorker() {
 
 // Versionsnummer der App – wird auf dem Anmeldebildschirm und im Admin-Bereich angezeigt,
 // damit man nach einem Update sieht, dass die neue Version läuft. Bei jeder Veröffentlichung erhöhen.
-export const APP_VERSION = '1.0.1';
+export const APP_VERSION = '1.0.2';
 
 // Offline-Betrieb: Service Worker registrieren (liegt im Hauptordner der App)
 export function registerOffline() {
@@ -205,6 +205,7 @@ export function showLicenseScreen(api, st, prefill = '') {
       <div class="lic-id-label small muted">Gerätekennung dieses Geräts</div>
       <div class="lic-id mono" id="lid"></div>
       <div class="row" style="margin:8px 0 18px"><button class="btn sm" id="lcopy">Kopieren</button><button class="btn sm" id="lshare">Senden …</button></div>
+      ${canScanQr() ? '<button class="btn" id="lscan" style="width:100%;margin-bottom:10px">QR-Code scannen</button>' : ''}
       <label class="field">Freischaltcode<textarea id="lcode" rows="4" placeholder="Freischaltcode hier einfügen" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea></label>
       <div class="lic-err" id="lerr"></div>
       <button class="btn primary" id="lgo" style="width:100%;margin-top:10px">Freischalten</button>
@@ -221,7 +222,9 @@ export function showLicenseScreen(api, st, prefill = '') {
       if (navigator.share) { try { await navigator.share({ text: idText() }); } catch {} } else location.href = `mailto:?subject=${encodeURIComponent('Freischaltung Kasse')}&body=${encodeURIComponent(idText())}`;
     });
     const go = async () => {
-      const code = $('#lcode', el).value.trim();
+      // Auch der komplette Freischalt-Link (z. B. aus WhatsApp) wird akzeptiert
+      const raw = $('#lcode', el).value.trim();
+      const code = extractLicenseCode(raw) || raw;
       if (!code) return err('Bitte den Freischaltcode einfügen.');
       $('#lgo', el).disabled = true;
       try {
@@ -233,10 +236,70 @@ export function showLicenseScreen(api, st, prefill = '') {
       } catch (e) { err(e.message); } finally { $('#lgo', el).disabled = false; }
     };
     $('#lgo', el).addEventListener('click', go);
+    $('#lscan', el)?.addEventListener('click', async () => {
+      const code = await scanLicenseQr();
+      if (code) { $('#lcode', el).value = code; go(); }
+    });
     document.body.append(el);
     if (prefill) go();
   });
   return licenseScreen;
+}
+
+// ---- QR-Code scannen (Freischaltcode) ----------------------------------------
+// Nutzt die eingebaute Barcode-Erkennung von Chrome auf Android (BarcodeDetector) und die Kamera.
+// Der QR-Code enthält den Freischalt-Link …/kasse/#lizenz=CODE (oder nur den Code).
+export function extractLicenseCode(text) {
+  const t = String(text || '').trim();
+  const m = t.match(/[#&?]lizenz=([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)/) || t.match(/^([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/);
+  return m ? m[1] : null;
+}
+export const canScanQr = () => typeof window !== 'undefined' && 'BarcodeDetector' in window && !!navigator.mediaDevices?.getUserMedia;
+export function scanLicenseQr() {
+  return new Promise((resolve) => {
+    let stream = null;
+    let timer = null;
+    let done = false;
+    const el = h(`<div class="qr-scan"><div class="lic-card">
+      <h2 style="margin-bottom:6px">QR-Code scannen</h2>
+      <p class="small muted" style="margin-bottom:10px">Die Kamera auf den QR-Code richten (Bildschirm des Anbieters oder gespeichertes Bild).</p>
+      <video playsinline muted></video>
+      <div class="lic-err" id="qerr"></div>
+      <button class="btn" id="qx" style="width:100%;margin-top:8px">Abbrechen</button></div></div>`);
+    const finish = (val) => {
+      if (done) return;
+      done = true;
+      clearInterval(timer);
+      stream?.getTracks().forEach((t) => t.stop());
+      el.remove();
+      resolve(val);
+    };
+    $('#qx', el).addEventListener('click', () => finish(null));
+    document.body.append(el);
+    (async () => {
+      try {
+        const det = new window.BarcodeDetector({ formats: ['qr_code'] });
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+        if (done) { stream.getTracks().forEach((t) => t.stop()); return; }
+        const v = $('video', el);
+        v.srcObject = stream;
+        await v.play();
+        timer = setInterval(async () => {
+          try {
+            const found = await det.detect(v);
+            const raw = found[0]?.rawValue;
+            if (!raw) return;
+            const code = extractLicenseCode(raw);
+            if (code) finish(code); else $('#qerr', el).textContent = 'Dieser QR-Code enthält keinen Freischaltcode.';
+          } catch {}
+        }, 300);
+      } catch (e) {
+        $('#qerr', el).textContent = e?.name === 'NotAllowedError'
+          ? 'Kein Zugriff auf die Kamera erlaubt. Bitte in Chrome die Kamera für diese App erlauben oder den Code einfügen.'
+          : 'Die Kamera konnte nicht gestartet werden. Bitte den Code einfügen.';
+      }
+    })();
+  });
 }
 
 // ---- Toasts & Modale ---------------------------------------------------------

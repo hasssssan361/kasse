@@ -1,6 +1,6 @@
 {
   "name": "kassensystem",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Manipulationsgeschütztes Kassensystem als App (PWA) – läuft komplett im Gerät, ohne Server",
   "type": "module",
   "private": true,
@@ -8,6 +8,6 @@
   "scripts": {
     "start": "node tools/serve.mjs",
     "build": "node tools/build-sw.mjs",
-    "test": "node --no-warnings --test test/kasse.test.mjs && node --no-warnings --test test/migration.test.mjs && node --no-warnings --test test/transfer.test.mjs && node --no-warnings --test test/setup.test.mjs"
+    "test": "node --no-warnings --test test/kasse.test.mjs && node --no-warnings --test test/migration.test.mjs && node --no-warnings --test test/transfer.test.mjs && node --no-warnings --test test/setup.test.mjs && node --no-warnings --test test/qr.test.mjs"
   }
 }
